@@ -6,6 +6,22 @@ It was terrible.
 
 This project is inspired by the lessons from those days.
 
-For further info, checkout the docs. The [development setup](./docs/dev/setup.md)
-is a good starting point and the [architecture overview](./docs/architecture/intro.md) is the
-entrypoint for the technical documentation.
+## Quick Start
+
+```bash
+# Run tests
+make test
+
+# Start MongoDB
+make mongo-up
+
+# Run application
+make run
+```
+
+## Documentation
+
+For detailed documentation, see [docs/index.md](./docs/index.md).
+
+The [development setup](./docs/dev/setup.md) is a good starting point and the 
+[architecture overview](./docs/architecture/intro.md) provides technical details.

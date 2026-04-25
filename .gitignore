@@ -3,6 +3,7 @@ bin/
 
 # Test coverage
 .coverage/
+coverage.out
 
 # IDE
 .idea/
