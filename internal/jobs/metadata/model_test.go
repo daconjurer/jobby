@@ -58,7 +58,7 @@ func TestJobMetadataModel_Getters(t *testing.T) {
 	now := time.Now()
 	startedAt := now.Add(1 * time.Hour)
 	completedAt := now.Add(2 * time.Hour)
-	
+
 	job := &JobMetadataModel{
 		JobID:       "test-id",
 		Name:        "test-name",
@@ -104,12 +104,12 @@ func TestJobMetadataModel_Getters(t *testing.T) {
 	if len(job.GetTags()) != 2 {
 		t.Errorf("GetTags() length = %d, want 2", len(job.GetTags()))
 	}
-	
+
 	payload := job.GetPayload()
 	if payload == nil {
 		t.Error("GetPayload() should not be nil")
 	}
-	
+
 	metadata := job.GetMetadata()
 	if metadata == nil {
 		t.Error("GetMetadata() should not be nil")
