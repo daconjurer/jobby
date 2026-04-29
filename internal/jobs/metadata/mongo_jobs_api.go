@@ -66,74 +66,61 @@ func NewMongoJobsApi(ctx context.Context, config MongoConfig) (*MongoJobsApi, er
 	}
 
 	if err := api.ensureIndexes(ctx); err != nil {
-		return nil, fmt.Errorf("failed to create indexes: %w", err)
+		return nil, fmt.Errorf("failed to verify indexes: %w", err)
 	}
 
 	return api, nil
 }
 
-// ensureIndexes creates necessary indexes for optimal query performance
+// ensureIndexes checks that indexes created exist in the DB.
+// It does not create indexes; provisioning is handled outside the application.
 func (m *MongoJobsApi) ensureIndexes(ctx context.Context) error {
-	metadataIndexes := []mongo.IndexModel{
-		{
-			Keys: bson.D{{Key: "jobId", Value: 1}},
-			Options: options.Index().
-				SetUnique(true).
-				SetName("idx_jobId_unique"),
-		},
-		{
-			Keys: bson.D{{Key: "status", Value: 1}},
-			Options: options.Index().
-				SetName("idx_status"),
-		},
-		{
-			Keys: bson.D{{Key: "name", Value: 1}},
-			Options: options.Index().
-				SetName("idx_name"),
-		},
-		{
-			Keys: bson.D{
-				{Key: "status", Value: 1},
-				{Key: "priority", Value: -1},
-				{Key: "createdAt", Value: -1},
-			},
-			Options: options.Index().
-				SetName("idx_status_priority_created"),
-		},
-		{
-			Keys: bson.D{{Key: "tags", Value: 1}},
-			Options: options.Index().
-				SetName("idx_tags"),
-		},
-		{
-			Keys: bson.D{{Key: "createdAt", Value: -1}},
-			Options: options.Index().
-				SetName("idx_createdAt"),
-		},
+	metadataRequired := []string{
+		"idx_jobId_unique",
+		"idx_name",
+		"idx_status",
+		"idx_createdAt_desc",
+		"idx_tags",
+		"idx_name_status",
+		"idx_status_priority_created",
+	}
+	if err := verifyIndexNames(ctx, m.metadataCollection, metadataRequired); err != nil {
+		return err
 	}
 
-	if _, err := m.metadataCollection.Indexes().CreateMany(ctx, metadataIndexes); err != nil {
-		return fmt.Errorf("failed to create metadata indexes: %w", err)
+	logsRequired := []string{
+		"idx_jobId_timestamp_desc",
+		"idx_timestamp_desc",
+		"idx_level",
+		"idx_jobId_level_timestamp",
+	}
+	if err := verifyIndexNames(ctx, m.logsCollection, logsRequired); err != nil {
+		return err
 	}
 
-	logsIndexes := []mongo.IndexModel{
-		{
-			Keys: bson.D{
-				{Key: "jobId", Value: 1},
-				{Key: "timestamp", Value: -1},
-			},
-			Options: options.Index().
-				SetName("idx_jobId_timestamp"),
-		},
-		{
-			Keys: bson.D{{Key: "level", Value: 1}},
-			Options: options.Index().
-				SetName("idx_level"),
-		},
+	return nil
+}
+
+func verifyIndexNames(ctx context.Context, coll *mongo.Collection, required []string) error {
+	label := coll.Name()
+	specs, err := coll.Indexes().ListSpecifications(ctx)
+	if err != nil {
+		return fmt.Errorf("list indexes for %s: %w", label, err)
 	}
 
-	if _, err := m.logsCollection.Indexes().CreateMany(ctx, logsIndexes); err != nil {
-		return fmt.Errorf("failed to create logs indexes: %w", err)
+	present := make(map[string]struct{}, len(specs))
+	for _, s := range specs {
+		present[s.Name] = struct{}{}
+	}
+
+	var missing []string
+	for _, name := range required {
+		if _, ok := present[name]; !ok {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%s: missing required indexes %v (ensure DB init / migrations have run)", label, missing)
 	}
 
 	return nil
