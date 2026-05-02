@@ -21,7 +21,6 @@ make run
 
 ## Documentation
 
-For detailed documentation, see [docs/index.md](./docs/index.md).
-
-The [development setup](./docs/dev/setup.md) is a good starting point and the 
+All documentation lives in the [docs](./docs) folder.
+The [development setup](./docs/dev/setup.md) is a good starting point and the
 [architecture overview](./docs/architecture/intro.md) provides technical details.
