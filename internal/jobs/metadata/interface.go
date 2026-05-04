@@ -113,17 +113,15 @@ type JobsApi interface {
 	// Get retrieves a job metadata by ID
 	Get(ctx context.Context, jobID string) (JobMetadata, error)
 
-	// Update updates an existing job metadata record
-	Update(ctx context.Context, job JobMetadata) error
+	// Update applies partial field updates ($set only). Nil fields on the patch leave the stored document unchanged.
+	// An empty patch (no fields to set) returns ErrEmptyUpdateJob. Status transitions and timestamp rules belong in the service layer.
+	Update(ctx context.Context, jobID string, patch UpdateJob) error
 
 	// Delete removes a job metadata record
 	Delete(ctx context.Context, jobID string) error
 
 	// List retrieves job metadata with filtering and pagination
 	List(ctx context.Context, filter ListFilter) ([]JobMetadata, error)
-
-	// UpdateStatus updates the job status and related timestamps atomically
-	UpdateStatus(ctx context.Context, jobID string, status JobStatus) error
 
 	// IncrementRetryCount increments the retry counter atomically
 	IncrementRetryCount(ctx context.Context, jobID string) error
@@ -169,6 +167,20 @@ type ListFilter struct {
 
 	// SortDesc sets whether to sort descending (default: true)
 	SortDesc bool
+}
+
+// UpdateJob selects fields to set on job_metadata by job ID. Nil pointers omit that field from the update.
+// bson tags mirror JobMetadataModel (see bsonPartialSet). Use IncrementRetryCount for atomic retry bumps.
+type UpdateJob struct {
+	Status      *JobStatus      `bson:"status,omitempty"`
+	Name        *string         `bson:"name,omitempty"`
+	Priority    *int            `bson:"priority,omitempty"`
+	StartedAt   *time.Time      `bson:"startedAt,omitempty"`
+	CompletedAt *time.Time      `bson:"completedAt,omitempty"`
+	Payload     *map[string]any `bson:"payload,omitempty"`
+	Metadata    *map[string]any `bson:"metadata,omitempty"`
+	Error       *string         `bson:"error,omitempty"`
+	Tags        *[]string       `bson:"tags,omitempty"`
 }
 
 // JobLog represents a log entry for job execution

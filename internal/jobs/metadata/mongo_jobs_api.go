@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -12,10 +13,8 @@ import (
 )
 
 var (
-	ErrJobNotFound     = errors.New("job not found")
-	ErrInvalidJobID    = errors.New("invalid job ID")
-	ErrInvalidStatus   = errors.New("invalid job status")
-	ErrInvalidLogLevel = errors.New("invalid log level")
+	ErrJobNotFound    = errors.New("job not found")
+	ErrEmptyUpdateJob = errors.New("update job: patch has no fields to set")
 )
 
 // MongoJobsApi is the MongoDB implementation of the JobsApi interface.
@@ -23,6 +22,9 @@ type MongoJobsApi struct {
 	db                 *mongo.Database
 	metadataCollection *mongo.Collection
 	logsCollection     *mongo.Collection
+
+	// IndexesPresent is set at construction: true if every expected index name existed on both collections.
+	IndexesPresent bool
 }
 
 var _ JobsApi = (*MongoJobsApi)(nil)
@@ -65,16 +67,18 @@ func NewMongoJobsApi(ctx context.Context, config MongoConfig) (*MongoJobsApi, er
 		logsCollection:     logsCollection,
 	}
 
-	if err := api.ensureIndexes(ctx); err != nil {
-		return nil, fmt.Errorf("failed to verify indexes: %w", err)
+	var errEnsure error
+	api.IndexesPresent, errEnsure = api.ensureIndexes(ctx)
+	if errEnsure != nil {
+		return nil, fmt.Errorf("failed to verify indexes: %w", errEnsure)
 	}
 
 	return api, nil
 }
 
-// ensureIndexes checks that indexes created exist in the DB.
+// ensureIndexes checks that expected index names exist. Missing indexes are logged but do not fail startup.
 // It does not create indexes; provisioning is handled outside the application.
-func (m *MongoJobsApi) ensureIndexes(ctx context.Context) error {
+func (m *MongoJobsApi) ensureIndexes(ctx context.Context) (allPresent bool, err error) {
 	metadataRequired := []string{
 		"idx_jobId_unique",
 		"idx_name",
@@ -84,8 +88,13 @@ func (m *MongoJobsApi) ensureIndexes(ctx context.Context) error {
 		"idx_name_status",
 		"idx_status_priority_created",
 	}
-	if err := verifyIndexNames(ctx, m.metadataCollection, metadataRequired); err != nil {
-		return err
+	metaOK, err := verifyRequiredIndexesPresent(ctx, m.metadataCollection, metadataRequired)
+	if err != nil {
+		return false, err
+	}
+	if !metaOK {
+		log.Printf("jobby: collection %q is missing one or more expected indexes (see mongo-init); performance may be degraded",
+			m.metadataCollection.Name())
 	}
 
 	logsRequired := []string{
@@ -94,54 +103,21 @@ func (m *MongoJobsApi) ensureIndexes(ctx context.Context) error {
 		"idx_level",
 		"idx_jobId_level_timestamp",
 	}
-	if err := verifyIndexNames(ctx, m.logsCollection, logsRequired); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func verifyIndexNames(ctx context.Context, coll *mongo.Collection, required []string) error {
-	label := coll.Name()
-	specs, err := coll.Indexes().ListSpecifications(ctx)
+	logsOK, err := verifyRequiredIndexesPresent(ctx, m.logsCollection, logsRequired)
 	if err != nil {
-		return fmt.Errorf("list indexes for %s: %w", label, err)
+		return false, err
+	}
+	if !logsOK {
+		log.Printf("jobby: collection %q is missing one or more expected indexes (see mongo-init); performance may be degraded",
+			m.logsCollection.Name())
 	}
 
-	present := make(map[string]struct{}, len(specs))
-	for _, s := range specs {
-		present[s.Name] = struct{}{}
-	}
-
-	var missing []string
-	for _, name := range required {
-		if _, ok := present[name]; !ok {
-			missing = append(missing, name)
-		}
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("%s: missing required indexes %v (ensure DB init / migrations have run)", label, missing)
-	}
-
-	return nil
+	return metaOK && logsOK, nil
 }
 
-// Create inserts a new job metadata record
+// Create inserts a new job metadata record (no domain validation).
 func (m *MongoJobsApi) Create(ctx context.Context, job JobMetadata) error {
-	if job == nil {
-		return errors.New("job cannot be nil")
-	}
-
-	if err := job.Validate(); err != nil {
-		return fmt.Errorf("job validation failed: %w", err)
-	}
-
-	model, ok := job.(*JobMetadataModel)
-	if !ok {
-		return errors.New("job must be of type *JobMetadataModel")
-	}
-
-	_, err := m.metadataCollection.InsertOne(ctx, model)
+	_, err := m.metadataCollection.InsertOne(ctx, job)
 	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
 			return fmt.Errorf("job with ID %s already exists", job.GetJobID())
@@ -152,12 +128,8 @@ func (m *MongoJobsApi) Create(ctx context.Context, job JobMetadata) error {
 	return nil
 }
 
-// Get retrieves a job metadata by ID
+// Get retrieves a job metadata by ID (no ID-shape validation; empty string is a normal filter).
 func (m *MongoJobsApi) Get(ctx context.Context, jobID string) (JobMetadata, error) {
-	if jobID == "" {
-		return nil, ErrInvalidJobID
-	}
-
 	filter := bson.M{"jobId": jobID}
 
 	var job JobMetadataModel
@@ -172,25 +144,18 @@ func (m *MongoJobsApi) Get(ctx context.Context, jobID string) (JobMetadata, erro
 	return &job, nil
 }
 
-// Update updates an existing job metadata record
-func (m *MongoJobsApi) Update(ctx context.Context, job JobMetadata) error {
-	if job == nil {
-		return errors.New("job cannot be nil")
+// Update applies patch fields with a single $set (no domain validation).
+func (m *MongoJobsApi) Update(ctx context.Context, jobID string, patch UpdateJob) error {
+	setDoc, err := bsonPartialSet(&patch)
+	if err != nil {
+		return fmt.Errorf("build update job patch: %w", err)
+	}
+	if len(setDoc) == 0 {
+		return ErrEmptyUpdateJob
 	}
 
-	if err := job.Validate(); err != nil {
-		return fmt.Errorf("job validation failed: %w", err)
-	}
-
-	model, ok := job.(*JobMetadataModel)
-	if !ok {
-		return errors.New("job must be of type *JobMetadataModel")
-	}
-
-	filter := bson.M{"jobId": model.JobID}
-	update := bson.M{"$set": model}
-
-	result, err := m.metadataCollection.UpdateOne(ctx, filter, update)
+	filter := bson.M{"jobId": jobID}
+	result, err := m.metadataCollection.UpdateOne(ctx, filter, bson.M{"$set": setDoc})
 	if err != nil {
 		return fmt.Errorf("failed to update job: %w", err)
 	}
@@ -202,12 +167,8 @@ func (m *MongoJobsApi) Update(ctx context.Context, job JobMetadata) error {
 	return nil
 }
 
-// Delete removes a job metadata record
+// Delete removes a job metadata record.
 func (m *MongoJobsApi) Delete(ctx context.Context, jobID string) error {
-	if jobID == "" {
-		return ErrInvalidJobID
-	}
-
 	filter := bson.M{"jobId": jobID}
 
 	result, err := m.metadataCollection.DeleteOne(ctx, filter)
@@ -314,66 +275,8 @@ func (m *MongoJobsApi) buildListQuery(filter ListFilter) bson.M {
 	return query
 }
 
-// UpdateStatus updates the job status and related timestamps atomically
-func (m *MongoJobsApi) UpdateStatus(ctx context.Context, jobID string, status JobStatus) error {
-	if jobID == "" {
-		return ErrInvalidJobID
-	}
-
-	if !status.IsValid() {
-		return ErrInvalidStatus
-	}
-
-	job, err := m.Get(ctx, jobID)
-	if err != nil {
-		return err
-	}
-
-	model := job.(*JobMetadataModel)
-
-	if !model.Status.CanTransitionTo(status) {
-		return fmt.Errorf("cannot transition from %s to %s", model.Status, status)
-	}
-
-	update := bson.M{
-		"$set": bson.M{
-			"status": status,
-		},
-	}
-
-	now := time.Now()
-
-	switch status {
-	case JobStatusRunning:
-		if model.StartedAt == nil {
-			update["$set"].(bson.M)["startedAt"] = now
-		}
-	case JobStatusCompleted, JobStatusFailed, JobStatusCancelled:
-		if model.CompletedAt == nil {
-			update["$set"].(bson.M)["completedAt"] = now
-		}
-	}
-
-	filter := bson.M{"jobId": jobID}
-
-	result, err := m.metadataCollection.UpdateOne(ctx, filter, update)
-	if err != nil {
-		return fmt.Errorf("failed to update status: %w", err)
-	}
-
-	if result.MatchedCount == 0 {
-		return ErrJobNotFound
-	}
-
-	return nil
-}
-
-// IncrementRetryCount increments the retry counter atomically
+// IncrementRetryCount increments the retry counter atomically.
 func (m *MongoJobsApi) IncrementRetryCount(ctx context.Context, jobID string) error {
-	if jobID == "" {
-		return ErrInvalidJobID
-	}
-
 	filter := bson.M{"jobId": jobID}
 	update := bson.M{
 		"$inc": bson.M{"retryCount": 1},
@@ -391,20 +294,8 @@ func (m *MongoJobsApi) IncrementRetryCount(ctx context.Context, jobID string) er
 	return nil
 }
 
-// AddLog appends a log entry for the specified job
+// AddLog appends a log entry (no field validation; collection JSON schema enforces shape).
 func (m *MongoJobsApi) AddLog(ctx context.Context, log JobLog) error {
-	if log.JobID == "" {
-		return ErrInvalidJobID
-	}
-
-	if !log.Level.IsValid() {
-		return ErrInvalidLogLevel
-	}
-
-	if log.Timestamp.IsZero() {
-		log.Timestamp = time.Now()
-	}
-
 	_, err := m.logsCollection.InsertOne(ctx, log)
 	if err != nil {
 		return fmt.Errorf("failed to insert log: %w", err)
@@ -413,12 +304,8 @@ func (m *MongoJobsApi) AddLog(ctx context.Context, log JobLog) error {
 	return nil
 }
 
-// GetLogs retrieves logs for a specific job with optional filtering
+// GetLogs retrieves logs for a specific job with optional filtering.
 func (m *MongoJobsApi) GetLogs(ctx context.Context, jobID string, filter LogFilter) ([]JobLog, error) {
-	if jobID == "" {
-		return nil, ErrInvalidJobID
-	}
-
 	query := m.buildLogsQuery(jobID, filter)
 
 	opts := options.Find()
