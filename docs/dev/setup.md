@@ -11,7 +11,7 @@ go build ./...
 ```
 
 The [compose.yml](../compose.yml) file defines the **docker compose** stack used for development
-and integration testing. It currently exposes **MongoDB 8** on host port **27018** (mapped to 27017 in the container). First-time init runs [scripts/mongo-init.js](../scripts/mongo-init.js), which creates the `jobby` database, `job_metadata` and `job_logs` collections (with validation), and the named indexes that `MongoJobsApi` checks at startup.
+and integration testing. It currently exposes **MongoDB 8** on host port **27018** (mapped to 27017 in the container). First-time init runs [scripts/mongo-init.js](../scripts/mongo-init.js), which creates the `jobby` database, `job_metadata` and `job_logs` collections (with validation), and the named indexes that `OpenMongoJobs` / `NewMongoJobsReaderWriter` verify at startup.
 
 ```sh
 docker compose up -d mongodb

@@ -28,11 +28,19 @@ func main() {
 		MinPoolSize:        10,
 	}
 
-	jobsApi, err := metadata.NewMongoJobsApi(ctx, config)
+	reader, _, client, err := metadata.OpenMongoJobs(ctx, config)
 	if err != nil {
-		log.Fatalf("Failed to create MongoJobsApi: %v", err)
+		log.Fatalf("Failed to open MongoDB jobs persistence: %v", err)
 	}
-	defer jobsApi.Close(ctx)
+	defer func() {
+		if err := client.Disconnect(ctx); err != nil {
+			log.Printf("mongo disconnect: %v", err)
+		}
+	}()
+
+	if !reader.IndexesPresent {
+		log.Printf("warning: expected indexes missing on one or both collections (see mongo-init)")
+	}
 
 	fmt.Println("Jobs CLI initialized successfully")
 }

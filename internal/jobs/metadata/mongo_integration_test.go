@@ -101,8 +101,8 @@ func teardownIntegrationCollections(ctx context.Context, db *mongo.Database, cfg
 	_ = clearJobCollections(ctx, db, cfg)
 }
 
-// prepareIntegrationMongoAPI opens a disposable client for collection cleanup plus a MongoJobsApi backed by its own pool.
-func prepareIntegrationMongoAPI(t *testing.T) (ctx context.Context, cfg MongoConfig, api *MongoJobsApi) {
+// prepareIntegrationMongoPersistence opens one client shared by collection cleanup plus reader/writer handles.
+func prepareIntegrationMongoPersistence(t *testing.T) (ctx context.Context, cfg MongoConfig, reader *MongoJobsReader, writer *MongoJobsWriter) {
 	t.Helper()
 	cfg = testMongoConfig(t)
 	ctx = context.Background()
@@ -111,48 +111,48 @@ func prepareIntegrationMongoAPI(t *testing.T) (ctx context.Context, cfg MongoCon
 	if err := setupIntegrationCollections(ctx, db, cfg); err != nil {
 		t.Fatalf("setupIntegrationCollections: %v", err)
 	}
-	var apiErr error
-	api, apiErr = NewMongoJobsApi(ctx, cfg)
-	if apiErr != nil {
-		t.Fatalf("NewMongoJobsApi: %v", apiErr)
+	var err error
+	reader, writer, err = NewMongoJobsReaderWriter(ctx, db, cfg)
+	if err != nil {
+		t.Fatalf("NewMongoJobsReaderWriter: %v", err)
 	}
 	t.Cleanup(func() {
-		if cerr := api.Close(ctx); cerr != nil {
-			t.Errorf("api Close: %v", cerr)
-		}
 		teardownIntegrationCollections(ctx, db, cfg)
 	})
-	return ctx, cfg, api
+	return ctx, cfg, reader, writer
 }
 
-// TestIntegration_MongoJobsApi groups subtests in order: EnsureIndexes runs against a DB
+// TestIntegration_MongoJobsPersistence groups subtests in order: EnsureIndexes runs against a DB
 // provisioned by compose/mongo-init.js; other subtests exercise CRUD paths with fresh fixtures.
-func TestIntegration_MongoJobsApi(t *testing.T) {
+func TestIntegration_MongoJobsPersistence(t *testing.T) {
 	ctxBase := context.Background()
 	cfgBase := testMongoConfig(t)
 
 	t.Run("EnsureIndexes", func(t *testing.T) {
-		api, err := NewMongoJobsApi(ctxBase, cfgBase)
+		reader, writer, client, err := OpenMongoJobs(ctxBase, cfgBase)
 		if err != nil {
-			t.Fatalf("NewMongoJobsApi: %v", err)
+			t.Fatalf("OpenMongoJobs: %v", err)
 		}
-		if !api.IndexesPresent {
+		defer func() {
+			if err := client.Disconnect(ctxBase); err != nil {
+				t.Errorf("Disconnect: %v", err)
+			}
+		}()
+		_ = writer
+		if !reader.IndexesPresent {
 			t.Error("expected IndexesPresent true with compose mongo-init indexes")
-		}
-		if err := api.Close(ctxBase); err != nil {
-			t.Errorf("Close: %v", err)
 		}
 	})
 
 	t.Run("Create_and_Get_roundTrip", func(t *testing.T) {
-		ctx, _, api := prepareIntegrationMongoAPI(t)
+		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
 		job := NewJobMetadata(GenerateJobID(), "integration-create", map[string]any{"k": "v"})
-		if err := api.Create(ctx, job); err != nil {
+		if err := writer.Create(ctx, job); err != nil {
 			t.Fatalf("Create: %v", err)
 		}
 
-		got, err := api.Get(ctx, job.JobID)
+		got, err := reader.Get(ctx, job.JobID)
 		if err != nil {
 			t.Fatalf("Get: %v", err)
 		}
@@ -168,57 +168,57 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 	})
 
 	t.Run("Create_errors", func(t *testing.T) {
-		ctx, _, api := prepareIntegrationMongoAPI(t)
+		ctx, _, _, writer := prepareIntegrationMongoPersistence(t)
 
-		if err := api.Create(ctx, nil); err == nil {
+		if err := writer.Create(ctx, nil); err == nil {
 			t.Fatal("Create(nil): want error")
 		}
 
 		// Persistence no longer validates; collection JSON schema rejects empty name / wrong shape.
 		bad := NewJobMetadata(GenerateJobID(), "", map[string]any{})
-		if err := api.Create(ctx, bad); err == nil {
+		if err := writer.Create(ctx, bad); err == nil {
 			t.Fatal("Create invalid name per DB schema: want error")
 		}
 
-		if err := api.Create(ctx, bogusJobMeta{}); err == nil {
+		if err := writer.Create(ctx, bogusJobMeta{}); err == nil {
 			t.Fatal("Create non-model job (wrong BSON shape vs schema): want error")
 		}
 
 		dup := NewJobMetadata(GenerateJobID(), "dup", nil)
-		if err := api.Create(ctx, dup); err != nil {
+		if err := writer.Create(ctx, dup); err != nil {
 			t.Fatalf("first Create: %v", err)
 		}
-		if err := api.Create(ctx, dup); err == nil {
+		if err := writer.Create(ctx, dup); err == nil {
 			t.Fatal("duplicate Create: want error")
 		}
 	})
 
 	t.Run("Get_errors", func(t *testing.T) {
-		ctx, _, api := prepareIntegrationMongoAPI(t)
+		ctx, _, reader, _ := prepareIntegrationMongoPersistence(t)
 
-		if _, err := api.Get(ctx, ""); !errors.Is(err, ErrJobNotFound) {
+		if _, err := reader.Get(ctx, ""); !errors.Is(err, ErrJobNotFound) {
 			t.Fatalf("Get empty id: got %v, want %v", err, ErrJobNotFound)
 		}
-		if _, err := api.Get(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrJobNotFound) {
+		if _, err := reader.Get(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrJobNotFound) {
 			t.Fatalf("Get missing job: got %v, want %v", err, ErrJobNotFound)
 		}
 	})
 
 	t.Run("Update_Delete", func(t *testing.T) {
-		ctx, _, api := prepareIntegrationMongoAPI(t)
+		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
 		job := NewJobMetadata(GenerateJobID(), "to-update", map[string]any{"v": 1})
 		job.AddTag("t1")
-		if err := api.Create(ctx, job); err != nil {
+		if err := writer.Create(ctx, job); err != nil {
 			t.Fatalf("Create: %v", err)
 		}
 
 		job.Metadata["edited"] = true
 		meta := job.Metadata
-		if err := api.Update(ctx, job.JobID, UpdateJob{Metadata: &meta}); err != nil {
+		if err := writer.Update(ctx, job.JobID, UpdateJob{Metadata: &meta}); err != nil {
 			t.Fatalf("Update: %v", err)
 		}
-		got, err := api.Get(ctx, job.JobID)
+		got, err := reader.Get(ctx, job.JobID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -228,35 +228,35 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 
 		stale := NewJobMetadata(GenerateJobID(), "missing", nil)
 		staleName := stale.Name
-		if err := api.Update(ctx, stale.JobID, UpdateJob{Name: &staleName}); !errors.Is(err, ErrJobNotFound) {
+		if err := writer.Update(ctx, stale.JobID, UpdateJob{Name: &staleName}); !errors.Is(err, ErrJobNotFound) {
 			t.Fatalf("Update stale: got %v, want %v", err, ErrJobNotFound)
 		}
 
 		wantName := "patched-bogus"
-		if err := api.Update(ctx, bogusJobMeta{}.GetJobID(), UpdateJob{Name: &wantName}); !errors.Is(err, ErrJobNotFound) {
+		if err := writer.Update(ctx, bogusJobMeta{}.GetJobID(), UpdateJob{Name: &wantName}); !errors.Is(err, ErrJobNotFound) {
 			t.Fatalf("Update unknown bogus job id: got %v want %v", err, ErrJobNotFound)
 		}
 
-		if err := api.Update(ctx, job.JobID, UpdateJob{}); !errors.Is(err, ErrEmptyUpdateJob) {
+		if err := writer.Update(ctx, job.JobID, UpdateJob{}); !errors.Is(err, ErrEmptyUpdateJob) {
 			t.Fatalf("Update empty patch: got %v, want %v", err, ErrEmptyUpdateJob)
 		}
 
-		if err := api.Delete(ctx, ""); !errors.Is(err, ErrJobNotFound) {
+		if err := writer.Delete(ctx, ""); !errors.Is(err, ErrJobNotFound) {
 			t.Fatalf("Delete empty id: %v", err)
 		}
-		if err := api.Delete(ctx, stale.JobID); !errors.Is(err, ErrJobNotFound) {
+		if err := writer.Delete(ctx, stale.JobID); !errors.Is(err, ErrJobNotFound) {
 			t.Fatalf("Delete missing: %v", err)
 		}
-		if err := api.Delete(ctx, job.JobID); err != nil {
+		if err := writer.Delete(ctx, job.JobID); err != nil {
 			t.Fatalf("Delete: %v", err)
 		}
-		if _, err := api.Get(ctx, job.JobID); !errors.Is(err, ErrJobNotFound) {
+		if _, err := reader.Get(ctx, job.JobID); !errors.Is(err, ErrJobNotFound) {
 			t.Fatalf("after delete Get: %v", err)
 		}
 	})
 
 	t.Run("List_filters_and_pagination", func(t *testing.T) {
-		ctx, _, api := prepareIntegrationMongoAPI(t)
+		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
 		base := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 		a := NewJobMetadata(GenerateJobID(), "worker-a", nil)
@@ -275,22 +275,22 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 		c.CreatedAt = base.Add(2 * time.Hour)
 
 		for _, j := range []*JobMetadataModel{a, b, c} {
-			if err := api.Create(ctx, j); err != nil {
+			if err := writer.Create(ctx, j); err != nil {
 				t.Fatalf("seed Create: %v", err)
 			}
 			run := JobStatusRunning
 			tStarted := time.Now().UTC()
-			if err := api.Update(ctx, j.JobID, UpdateJob{Status: &run, StartedAt: &tStarted}); err != nil {
+			if err := writer.Update(ctx, j.JobID, UpdateJob{Status: &run, StartedAt: &tStarted}); err != nil {
 				t.Fatalf("Update seed running: %v", err)
 			}
 			done := JobStatusCompleted
 			tCompleted := time.Now().UTC()
-			if err := api.Update(ctx, j.JobID, UpdateJob{Status: &done, CompletedAt: &tCompleted}); err != nil {
+			if err := writer.Update(ctx, j.JobID, UpdateJob{Status: &done, CompletedAt: &tCompleted}); err != nil {
 				t.Fatalf("Update seed completed: %v", err)
 			}
 		}
 
-		none, err := api.List(ctx, ListFilter{
+		none, err := reader.List(ctx, ListFilter{
 			Names: []string{"__no_match__"},
 		})
 		if err != nil {
@@ -300,7 +300,7 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 			t.Fatalf("List mismatch names: len %d", len(none))
 		}
 
-		onlyA, err := api.List(ctx, ListFilter{
+		onlyA, err := reader.List(ctx, ListFilter{
 			Names:    []string{"worker-a"},
 			Statuses: []JobStatus{JobStatusCompleted},
 		})
@@ -311,7 +311,7 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 			t.Fatalf("filter name+status: %+v", onlyA)
 		}
 
-		byTag, err := api.List(ctx, ListFilter{Tags: []string{"y"}})
+		byTag, err := reader.List(ctx, ListFilter{Tags: []string{"y"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -320,7 +320,7 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 		}
 
 		minP := 6
-		highPri, err := api.List(ctx, ListFilter{
+		highPri, err := reader.List(ctx, ListFilter{
 			MinPriority: &minP,
 			Statuses:    []JobStatus{JobStatusCompleted},
 		})
@@ -332,7 +332,7 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 		}
 
 		maxP := 7
-		lowPri, err := api.List(ctx, ListFilter{
+		lowPri, err := reader.List(ctx, ListFilter{
 			MaxPriority: &maxP,
 			SortBy:      "createdAt",
 			SortDesc:    false,
@@ -348,7 +348,7 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 		}
 
 		afterWindow := base.Add(30 * time.Minute)
-		between, err := api.List(ctx, ListFilter{
+		between, err := reader.List(ctx, ListFilter{
 			CreatedAfter:  &afterWindow,
 			CreatedBefore: func() *time.Time { z := base.Add(3 * time.Hour); return &z }(),
 		})
@@ -359,7 +359,7 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 			t.Fatalf("created window: got %d jobs %+v", len(between), jobIDs(between))
 		}
 
-		page, err := api.List(ctx, ListFilter{
+		page, err := reader.List(ctx, ListFilter{
 			SortBy:   "createdAt",
 			SortDesc: true,
 			Skip:     1,
@@ -374,44 +374,44 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 	})
 
 	t.Run("UpdateJob_patch", func(t *testing.T) {
-		ctx, _, api := prepareIntegrationMongoAPI(t)
+		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
 		j := NewJobMetadata(GenerateJobID(), "flow", nil)
-		if err := api.Create(ctx, j); err != nil {
+		if err := writer.Create(ctx, j); err != nil {
 			t.Fatal(err)
 		}
 
 		run := JobStatusRunning
-		if err := api.Update(ctx, "", UpdateJob{Status: &run}); !errors.Is(err, ErrJobNotFound) {
+		if err := writer.Update(ctx, "", UpdateJob{Status: &run}); !errors.Is(err, ErrJobNotFound) {
 			t.Fatalf("Update empty job id: %v", err)
 		}
 		bad := JobStatus("nope")
-		if err := api.Update(ctx, j.JobID, UpdateJob{Status: &bad}); err == nil {
+		if err := writer.Update(ctx, j.JobID, UpdateJob{Status: &bad}); err == nil {
 			t.Fatal("invalid status value: want write error from collection validator")
 		}
 
 		// No transition rules in the repository: pending -> completed is persisted if callers supply timestamps / schema permits.
 		done := JobStatusCompleted
 		tCompleted := time.Now().UTC()
-		if err := api.Update(ctx, j.JobID, UpdateJob{Status: &done, CompletedAt: &tCompleted}); err != nil {
+		if err := writer.Update(ctx, j.JobID, UpdateJob{Status: &done, CompletedAt: &tCompleted}); err != nil {
 			t.Fatalf("pending->completed: %v", err)
 		}
-		jm, err := api.Get(ctx, j.JobID)
+		jm, err := reader.Get(ctx, j.JobID)
 		afterSkip := mustJobModel(t, jm, err)
 		if afterSkip.Status != JobStatusCompleted || afterSkip.CompletedAt == nil {
 			t.Fatalf("after pending->completed: %+v", afterSkip)
 		}
 
 		j2 := NewJobMetadata(GenerateJobID(), "flow2", nil)
-		if err := api.Create(ctx, j2); err != nil {
+		if err := writer.Create(ctx, j2); err != nil {
 			t.Fatal(err)
 		}
 		running := JobStatusRunning
 		tStarted := time.Now().UTC()
-		if err := api.Update(ctx, j2.JobID, UpdateJob{Status: &running, StartedAt: &tStarted}); err != nil {
+		if err := writer.Update(ctx, j2.JobID, UpdateJob{Status: &running, StartedAt: &tStarted}); err != nil {
 			t.Fatalf("pending->running: %v", err)
 		}
-		jmRun, err := api.Get(ctx, j2.JobID)
+		jmRun, err := reader.Get(ctx, j2.JobID)
 		afterRun := mustJobModel(t, jmRun, err)
 		if afterRun.GetStartedAt() == nil {
 			t.Fatal("expected startedAt after running")
@@ -419,20 +419,20 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 
 		completed := JobStatusCompleted
 		tDone := time.Now().UTC()
-		if err := api.Update(ctx, j2.JobID, UpdateJob{Status: &completed, CompletedAt: &tDone}); err != nil {
+		if err := writer.Update(ctx, j2.JobID, UpdateJob{Status: &completed, CompletedAt: &tDone}); err != nil {
 			t.Fatalf("running->completed: %v", err)
 		}
-		jmDone, err := api.Get(ctx, j2.JobID)
+		jmDone, err := reader.Get(ctx, j2.JobID)
 		afterDone := mustJobModel(t, jmDone, err)
 		if afterDone.GetCompletedAt() == nil {
 			t.Fatal("expected completedAt")
 		}
 
 		revived := JobStatusRunning
-		if err := api.Update(ctx, j2.JobID, UpdateJob{Status: &revived}); err != nil {
+		if err := writer.Update(ctx, j2.JobID, UpdateJob{Status: &revived}); err != nil {
 			t.Fatalf("terminal->running (allowed at persistence layer): %v", err)
 		}
-		jmRev, err := api.Get(ctx, j2.JobID)
+		jmRev, err := reader.Get(ctx, j2.JobID)
 		got := mustJobModel(t, jmRev, err)
 		if got.Status != JobStatusRunning {
 			t.Fatalf("status = %s want running", got.Status)
@@ -440,18 +440,18 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 	})
 
 	t.Run("UpdateJob_running_preserves_startedAt", func(t *testing.T) {
-		ctx, _, api := prepareIntegrationMongoAPI(t)
+		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
 		j := NewJobMetadata(GenerateJobID(), "started-once", nil)
-		if err := api.Create(ctx, j); err != nil {
+		if err := writer.Create(ctx, j); err != nil {
 			t.Fatal(err)
 		}
 		running := JobStatusRunning
 		tStarted := time.Now().UTC()
-		if err := api.Update(ctx, j.JobID, UpdateJob{Status: &running, StartedAt: &tStarted}); err != nil {
+		if err := writer.Update(ctx, j.JobID, UpdateJob{Status: &running, StartedAt: &tStarted}); err != nil {
 			t.Fatal(err)
 		}
-		firstJM, err := api.Get(ctx, j.JobID)
+		firstJM, err := reader.Get(ctx, j.JobID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -463,11 +463,11 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 
 		failed := JobStatusFailed
 		tCompleted := time.Now().UTC()
-		if err := api.Update(ctx, j.JobID, UpdateJob{Status: &failed, CompletedAt: &tCompleted}); err != nil {
+		if err := writer.Update(ctx, j.JobID, UpdateJob{Status: &failed, CompletedAt: &tCompleted}); err != nil {
 			t.Fatal(err)
 		}
 
-		gotJM, err := api.Get(ctx, j.JobID)
+		gotJM, err := reader.Get(ctx, j.JobID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -478,26 +478,26 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 	})
 
 	t.Run("IncrementRetryCount", func(t *testing.T) {
-		ctx, _, api := prepareIntegrationMongoAPI(t)
+		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
-		if err := api.IncrementRetryCount(ctx, ""); !errors.Is(err, ErrJobNotFound) {
+		if err := writer.IncrementRetryCount(ctx, ""); !errors.Is(err, ErrJobNotFound) {
 			t.Fatalf("IncrementRetryCount empty id: %v", err)
 		}
-		if err := api.IncrementRetryCount(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrJobNotFound) {
+		if err := writer.IncrementRetryCount(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrJobNotFound) {
 			t.Fatal(err)
 		}
 
 		j := NewJobMetadata(GenerateJobID(), "retryMe", nil)
-		if err := api.Create(ctx, j); err != nil {
+		if err := writer.Create(ctx, j); err != nil {
 			t.Fatal(err)
 		}
-		if err := api.IncrementRetryCount(ctx, j.JobID); err != nil {
+		if err := writer.IncrementRetryCount(ctx, j.JobID); err != nil {
 			t.Fatal(err)
 		}
-		if err := api.IncrementRetryCount(ctx, j.JobID); err != nil {
+		if err := writer.IncrementRetryCount(ctx, j.JobID); err != nil {
 			t.Fatal(err)
 		}
-		jm, err := api.Get(ctx, j.JobID)
+		jm, err := reader.Get(ctx, j.JobID)
 		got := mustJobModel(t, jm, err)
 		if got.RetryCount != 2 {
 			t.Fatalf("retryCount=%d want 2", got.RetryCount)
@@ -505,18 +505,18 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 	})
 
 	t.Run("Logs", func(t *testing.T) {
-		ctx, _, api := prepareIntegrationMongoAPI(t)
+		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
 		jobID := GenerateJobID()
 		job := NewJobMetadata(jobID, "log-test", nil)
-		if err := api.Create(ctx, job); err != nil {
+		if err := writer.Create(ctx, job); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := api.AddLog(ctx, JobLog{JobID: "", Level: LogLevelInfo, Message: "x", Timestamp: time.Now().UTC()}); err == nil {
+		if err := writer.AddLog(ctx, JobLog{JobID: "", Level: LogLevelInfo, Message: "x", Timestamp: time.Now().UTC()}); err == nil {
 			t.Fatal("AddLog empty job id: want error from schema / write")
 		}
-		if err := api.AddLog(ctx, JobLog{JobID: jobID, Level: LogLevel("nope"), Message: "x", Timestamp: time.Now().UTC()}); err == nil {
+		if err := writer.AddLog(ctx, JobLog{JobID: jobID, Level: LogLevel("nope"), Message: "x", Timestamp: time.Now().UTC()}); err == nil {
 			t.Fatal("invalid log level: want error from schema / write")
 		}
 
@@ -528,16 +528,16 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 			{JobID: jobID, Timestamp: t0.Add(2 * time.Minute), Level: LogLevelError, Message: "e"},
 		}
 		for _, lg := range tLogs {
-			if err := api.AddLog(ctx, lg); err != nil {
+			if err := writer.AddLog(ctx, lg); err != nil {
 				t.Fatalf("AddLog %+v: %v", lg, err)
 			}
 		}
 		fatalLog := JobLog{JobID: jobID, Timestamp: t0.Add(10 * time.Minute), Level: LogLevelFatal, Message: "f"}
-		if err := api.AddLog(ctx, fatalLog); err != nil {
+		if err := writer.AddLog(ctx, fatalLog); err != nil {
 			t.Fatal(err)
 		}
 
-		all, err := api.GetLogs(ctx, jobID, LogFilter{})
+		all, err := reader.GetLogs(ctx, jobID, LogFilter{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -545,7 +545,7 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 			t.Fatalf("want 5 logs, got %d", len(all))
 		}
 
-		emptyJobLogs, err := api.GetLogs(ctx, "", LogFilter{})
+		emptyJobLogs, err := reader.GetLogs(ctx, "", LogFilter{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -553,7 +553,7 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 			t.Fatalf("GetLogs empty job id: want no rows, got %d", len(emptyJobLogs))
 		}
 
-		levels, err := api.GetLogs(ctx, jobID, LogFilter{Levels: []LogLevel{LogLevelDebug, LogLevelError}})
+		levels, err := reader.GetLogs(ctx, jobID, LogFilter{Levels: []LogLevel{LogLevelDebug, LogLevelError}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -563,7 +563,7 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 
 		since := t0.Add(-30 * time.Second)
 		until := t0.Add(90 * time.Second)
-		window, err := api.GetLogs(ctx, jobID, LogFilter{Since: &since, Until: &until})
+		window, err := reader.GetLogs(ctx, jobID, LogFilter{Since: &since, Until: &until})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -571,7 +571,7 @@ func TestIntegration_MongoJobsApi(t *testing.T) {
 			t.Fatalf("time window: want 2, got %d", len(window))
 		}
 
-		page, err := api.GetLogs(ctx, jobID, LogFilter{Limit: 2, Skip: 1})
+		page, err := reader.GetLogs(ctx, jobID, LogFilter{Limit: 2, Skip: 1})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -13,8 +13,8 @@ This project is a microservices-based system for distributed workloads.
 The **jobs metadata** layer lives under `internal/jobs/metadata`. It defines:
 
 - `JobMetadata` — interface implemented by `JobMetadataModel` for type-safe job records
-- `JobsApi` — persistence contract (CRUD, partial updates via **`UpdateJob`**, listing, **`IncrementRetryCount`**, logs; no separate **`UpdateStatus`**—services build **`UpdateJob`** after domain rules)
-- `MongoJobsApi` — MongoDB implementation; on connect it **verifies** that required indexes exist (indexes are created by database init / migrations, not by the application)
+- `JobsReader` / `JobsWriter` — CQRS-style persistence ports (queries vs commands); partial metadata updates use **`UpdateJob`** with **`JobsWriter.Update`** (no separate **`UpdateStatus`**—services assemble **`UpdateJob`** after domain rules)
+- `MongoJobsReader` / `MongoJobsWriter` — MongoDB implementations; **`OpenMongoJobs`** connects once and returns reader, writer, and **`*mongo.Client`** while **verifying** required index names (indexes are created by database init / migrations, not by the application)
 - Helpers such as `GenerateJobID` and `NewJobLog`
 
-A small **`cmd/jobs-cli`** binary loads `MongoJobsApi` from environment (see `docs/dev/setup.md`) for local smoke checks.
+A small **`cmd/jobs-cli`** binary calls **`OpenMongoJobs`** from environment (see `docs/dev/setup.md`) for local smoke checks.

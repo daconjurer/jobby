@@ -104,33 +104,27 @@ func (s JobStatus) CanTransitionTo(target JobStatus) bool {
 	}
 }
 
-// JobsApi defines the interface for job metadata persistence operations.
-// Implementations must handle both job_metadata and job_logs collections.
-type JobsApi interface {
-	// Create inserts a new job metadata record
-	Create(ctx context.Context, job JobMetadata) error
-
-	// Get retrieves a job metadata by ID
+// JobsReader defines read-only operations for job metadata and logs.
+type JobsReader interface {
 	Get(ctx context.Context, jobID string) (JobMetadata, error)
-
-	// Update applies partial field updates ($set only). Nil fields on the patch leave the stored document unchanged.
-	// An empty patch (no fields to set) returns ErrEmptyUpdateJob. Status transitions and timestamp rules belong in the service layer.
-	Update(ctx context.Context, jobID string, patch UpdateJob) error
-
-	// Delete removes a job metadata record
-	Delete(ctx context.Context, jobID string) error
-
-	// List retrieves job metadata with filtering and pagination
 	List(ctx context.Context, filter ListFilter) ([]JobMetadata, error)
-
-	// IncrementRetryCount increments the retry counter atomically
-	IncrementRetryCount(ctx context.Context, jobID string) error
-
-	// AddLog appends a log entry for the specified job
-	AddLog(ctx context.Context, log JobLog) error
-
-	// GetLogs retrieves logs for a specific job with optional filtering
 	GetLogs(ctx context.Context, jobID string, filter LogFilter) ([]JobLog, error)
+	CountJobs(ctx context.Context, filter ListFilter) (int64, error)
+	GetJobsByStatus(ctx context.Context, status JobStatus, limit int) ([]JobMetadata, error)
+	GetPendingJobs(ctx context.Context, limit int) ([]JobMetadata, error)
+	GetRecentLogs(ctx context.Context, jobID string, limit int) ([]JobLog, error)
+	GetErrorLogs(ctx context.Context, jobID string) ([]JobLog, error)
+}
+
+// JobsWriter defines write operations for job metadata and logs.
+// Methods take context.Context.
+type JobsWriter interface {
+	Create(ctx context.Context, job JobMetadata) error
+	Update(ctx context.Context, jobID string, patch UpdateJob) error
+	Delete(ctx context.Context, jobID string) error
+	IncrementRetryCount(ctx context.Context, jobID string) error
+	AddLog(ctx context.Context, log JobLog) error
+	DeleteOldLogs(ctx context.Context, olderThan time.Duration) (int64, error)
 }
 
 // ListFilter defines filtering options for listing jobs

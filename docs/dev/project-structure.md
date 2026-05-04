@@ -6,10 +6,10 @@ and the [Organizing a Go module](https://go.dev/doc/modules/layout) documentatio
 
 The applications of the project are defined in `cmd/`. For example:
 
-- **`cmd/jobs-cli`** — minimal CLI that connects to MongoDB using `internal/jobs/metadata` (`MongoJobsApi`).
+- **`cmd/jobs-cli`** — minimal CLI that connects to MongoDB using `internal/jobs/metadata` (`OpenMongoJobs`).
 
 **`internal/`**
 
-- **`internal/jobs/metadata/`** — jobs metadata domain: `JobMetadata` / `JobMetadataModel`, `JobLog`, `JobsApi`, and `MongoJobsApi` (MongoDB persistence for `job_metadata` and `job_logs`). Unit tests run with `go test`; integration tests use the `integration` build tag and expect a running MongoDB (see `docs/dev/setup.md`).
+- **`internal/jobs/metadata/`** — jobs metadata domain: `JobMetadata` / `JobMetadataModel`, `JobLog`, `JobsReader` / `JobsWriter`, and `MongoJobsReader` / `MongoJobsWriter` (MongoDB persistence for `job_metadata` and `job_logs`). Unit tests run with `go test`; integration tests use the `integration` build tag and expect a running MongoDB (see `docs/dev/setup.md`).
 
 Other packages will appear here as services grow; the architecture summary is in `docs/architecture/intro.md`.
