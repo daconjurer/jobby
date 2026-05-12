@@ -28,7 +28,7 @@ func main() {
 		MinPoolSize:        10,
 	}
 
-	reader, _, client, err := metadata.OpenMongoJobs(ctx, config)
+	reader, client, err := metadata.OpenMongoJobsReader(ctx, config)
 	if err != nil {
 		log.Fatalf("Failed to open MongoDB jobs persistence: %v", err)
 	}

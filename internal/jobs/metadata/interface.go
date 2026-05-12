@@ -123,6 +123,8 @@ type JobsWriter interface {
 	Update(ctx context.Context, jobID string, patch UpdateJob) error
 	Delete(ctx context.Context, jobID string) error
 	IncrementRetryCount(ctx context.Context, jobID string) error
+	// ClearJobExecutionTimestamps removes startedAt and completedAt from job_metadata (e.g. after retry).
+	ClearJobExecutionTimestamps(ctx context.Context, jobID string) error
 	AddLog(ctx context.Context, log JobLog) error
 	DeleteOldLogs(ctx context.Context, olderThan time.Duration) (int64, error)
 }

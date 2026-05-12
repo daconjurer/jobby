@@ -21,32 +21,25 @@ type MongoConfig struct {
 	MinPoolSize        uint64
 }
 
-// NewMongoJobsReaderWriter verifies indexes and returns reader and writer sharing one database handle.
-// The caller owns mongo.Client lifecycle (Disconnect once at shutdown).
-func NewMongoJobsReaderWriter(ctx context.Context, db *mongo.Database, cfg MongoConfig) (*MongoJobsReader, *MongoJobsWriter, error) {
+// NewMongoJobsReader verifies indexes and returns a reader for the configured collections.
+// The caller owns mongo.Client lifecycle when using an existing *mongo.Database.
+func NewMongoJobsReader(ctx context.Context, db *mongo.Database, cfg MongoConfig) (*MongoJobsReader, error) {
 	metaColl := db.Collection(cfg.CollectionMetadata)
 	logsColl := db.Collection(cfg.CollectionLogs)
 
 	allPresent, err := ensureJobsIndexes(ctx, metaColl, logsColl)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to verify indexes: %w", err)
+		return nil, fmt.Errorf("failed to verify indexes: %w", err)
 	}
 
-	reader := &MongoJobsReader{
+	return &MongoJobsReader{
 		metadataCollection: metaColl,
 		logsCollection:     logsColl,
 		IndexesPresent:     allPresent,
-	}
-	writer := &MongoJobsWriter{
-		metadataCollection: metaColl,
-		logsCollection:     logsColl,
-	}
-	return reader, writer, nil
+	}, nil
 }
 
-// OpenMongoJobs connects to MongoDB, verifies indexes, and returns reader, writer, and client.
-// Disconnect the client once when tearing down the application.
-func OpenMongoJobs(ctx context.Context, cfg MongoConfig) (*MongoJobsReader, *MongoJobsWriter, *mongo.Client, error) {
+func connectMongoDB(ctx context.Context, cfg MongoConfig) (*mongo.Client, *mongo.Database, error) {
 	clientOpts := options.Client().
 		ApplyURI(cfg.URI).
 		SetTimeout(cfg.Timeout).
@@ -55,21 +48,48 @@ func OpenMongoJobs(ctx context.Context, cfg MongoConfig) (*MongoJobsReader, *Mon
 
 	client, err := mongo.Connect(clientOpts)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
+		return nil, nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
 	}
 
 	if err := client.Ping(ctx, nil); err != nil {
 		_ = client.Disconnect(ctx)
-		return nil, nil, nil, fmt.Errorf("failed to ping MongoDB: %w", err)
+		return nil, nil, fmt.Errorf("failed to ping MongoDB: %w", err)
 	}
 
-	db := client.Database(cfg.Database)
-	reader, writer, err := NewMongoJobsReaderWriter(ctx, db, cfg)
+	return client, client.Database(cfg.Database), nil
+}
+
+// OpenMongoJobsReader connects to MongoDB, verifies indexes, and returns a reader and client.
+// Disconnect the client once when tearing down the application.
+func OpenMongoJobsReader(ctx context.Context, cfg MongoConfig) (*MongoJobsReader, *mongo.Client, error) {
+	client, db, err := connectMongoDB(ctx, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	reader, err := NewMongoJobsReader(ctx, db, cfg)
+	if err != nil {
+		_ = client.Disconnect(ctx)
+		return nil, nil, err
+	}
+	return reader, client, nil
+}
+
+// OpenMongoJobs connects to MongoDB, verifies indexes, and returns reader, writer, and client.
+// Disconnect the client once when tearing down the application.
+func OpenMongoJobs(ctx context.Context, cfg MongoConfig) (*MongoJobsReader, *MongoJobsWriter, *mongo.Client, error) {
+	client, db, err := connectMongoDB(ctx, cfg)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	reader, err := NewMongoJobsReader(ctx, db, cfg)
 	if err != nil {
 		_ = client.Disconnect(ctx)
 		return nil, nil, nil, err
 	}
-
+	writer := &MongoJobsWriter{
+		metadataCollection: reader.metadataCollection,
+		logsCollection:     reader.logsCollection,
+	}
 	return reader, writer, client, nil
 }
 

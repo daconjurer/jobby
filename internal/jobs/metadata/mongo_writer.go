@@ -88,6 +88,28 @@ func (w *MongoJobsWriter) IncrementRetryCount(ctx context.Context, jobID string)
 	return nil
 }
 
+// ClearJobExecutionTimestamps removes startedAt and completedAt via $unset.
+func (w *MongoJobsWriter) ClearJobExecutionTimestamps(ctx context.Context, jobID string) error {
+	filter := bson.M{"jobId": jobID}
+	update := bson.M{
+		"$unset": bson.M{
+			"startedAt":   "",
+			"completedAt": "",
+		},
+	}
+
+	result, err := w.metadataCollection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("failed to clear job timestamps: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return ErrJobNotFound
+	}
+
+	return nil
+}
+
 // AddLog appends a log entry (no field validation; collection JSON schema enforces shape).
 func (w *MongoJobsWriter) AddLog(ctx context.Context, log JobLog) error {
 	_, err := w.logsCollection.InsertOne(ctx, log)

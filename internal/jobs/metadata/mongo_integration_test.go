@@ -112,9 +112,13 @@ func prepareIntegrationMongoPersistence(t *testing.T) (ctx context.Context, cfg 
 		t.Fatalf("setupIntegrationCollections: %v", err)
 	}
 	var err error
-	reader, writer, err = NewMongoJobsReaderWriter(ctx, db, cfg)
+	reader, err = NewMongoJobsReader(ctx, db, cfg)
 	if err != nil {
-		t.Fatalf("NewMongoJobsReaderWriter: %v", err)
+		t.Fatalf("NewMongoJobsReader: %v", err)
+	}
+	writer = &MongoJobsWriter{
+		metadataCollection: reader.metadataCollection,
+		logsCollection:     reader.logsCollection,
 	}
 	t.Cleanup(func() {
 		teardownIntegrationCollections(ctx, db, cfg)
@@ -501,6 +505,35 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		got := mustJobModel(t, jm, err)
 		if got.RetryCount != 2 {
 			t.Fatalf("retryCount=%d want 2", got.RetryCount)
+		}
+	})
+
+	t.Run("ClearJobExecutionTimestamps", func(t *testing.T) {
+		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
+
+		if err := writer.ClearJobExecutionTimestamps(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrJobNotFound) {
+			t.Fatalf("ClearJobExecutionTimestamps missing job: %v", err)
+		}
+
+		j := NewJobMetadata(GenerateJobID(), "clear-ts", nil)
+		t0 := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
+		t1 := time.Date(2026, 2, 1, 13, 0, 0, 0, time.UTC)
+		j.StartedAt = &t0
+		j.CompletedAt = &t1
+		j.Status = JobStatusFailed
+		j.Error = "boom"
+		if err := writer.Create(ctx, j); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := writer.ClearJobExecutionTimestamps(ctx, j.JobID); err != nil {
+			t.Fatal(err)
+		}
+
+		jm, err := reader.Get(ctx, j.JobID)
+		got := mustJobModel(t, jm, err)
+		if got.StartedAt != nil || got.CompletedAt != nil {
+			t.Fatalf("expected nil timestamps, got startedAt=%v completedAt=%v", got.StartedAt, got.CompletedAt)
 		}
 	})
 
