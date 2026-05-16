@@ -2,29 +2,27 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/daconjurer/jobby/internal/jobs/handler"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"github.com/daconjurer/jobby/internal/jobs/service"
+	"github.com/daconjurer/jobby/internal/settings"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	ctx := context.Background()
 
 	mongoConfig := metadata.MongoConfig{
-		URI:                getEnv("MONGODB_URI", "mongodb://jobby_app:jobby_app_pass@localhost:27018/jobby?authSource=jobby"),
-		Database:           getEnv("MONGODB_DATABASE", "jobby"),
-		CollectionMetadata: getEnv("MONGODB_COLLECTION_METADATA", "job_metadata"),
-		CollectionLogs:     getEnv("MONGODB_COLLECTION_LOGS", "job_logs"),
-		Timeout:            parseDuration(getEnv("MONGODB_TIMEOUT", "10s")),
-		MaxPoolSize:        parseUint64(getEnv("MONGODB_MAX_POOL_SIZE", "100")),
-		MinPoolSize:        parseUint64(getEnv("MONGODB_MIN_POOL_SIZE", "10")),
+		URI:                settings.GetEnvOrPanic("MONGODB_URI"),
+		Database:           settings.GetEnvOrPanic("MONGODB_DATABASE"),
+		CollectionMetadata: settings.GetEnvOrPanic("MONGODB_COLLECTION_METADATA"),
+		CollectionLogs:     settings.GetEnvOrPanic("MONGODB_COLLECTION_LOGS"),
+		Timeout:            settings.ParseDuration(settings.GetEnv("MONGODB_TIMEOUT", "10s")),
+		MaxPoolSize:        settings.ParseUint64(settings.GetEnv("MONGODB_MAX_POOL_SIZE", "100")),
+		MinPoolSize:        settings.ParseUint64(settings.GetEnv("MONGODB_MIN_POOL_SIZE", "10")),
 	}
 
 	reader, writer, mongoClient, err := metadata.OpenMongoJobs(ctx, mongoConfig)
@@ -65,30 +63,9 @@ func main() {
 		jobs.GET("/:id/logs", metaHandler.GetJobLogs)
 	}
 
-	port := getEnv("PORT", "3001")
+	port := settings.GetEnvOrPanic("PORT")
 	log.Printf("Starting jobs service on port %s", port)
 	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-func parseDuration(s string) time.Duration {
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return 10 * time.Second
-	}
-	return d
-}
-
-func parseUint64(s string) uint64 {
-	var v uint64
-	_, _ = fmt.Sscanf(s, "%d", &v)
-	return v
 }

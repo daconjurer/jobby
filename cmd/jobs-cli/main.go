@@ -4,28 +4,22 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
-	"time"
 
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/settings"
 )
 
 func main() {
 	ctx := context.Background()
 
-	mongoURI := os.Getenv("MONGO_URI")
-	if mongoURI == "" {
-		mongoURI = "mongodb://jobby_app:jobby_app_pass@localhost:27018/jobby?authSource=jobby"
-	}
-
 	config := metadata.MongoConfig{
-		URI:                mongoURI,
-		Database:           "jobby",
-		CollectionMetadata: "job_metadata",
-		CollectionLogs:     "job_logs",
-		Timeout:            10 * time.Second,
-		MaxPoolSize:        100,
-		MinPoolSize:        10,
+		URI:                settings.GetEnvOrPanic("MONGODB_URI"),
+		Database:           settings.GetEnvOrPanic("MONGODB_DATABASE"),
+		CollectionMetadata: settings.GetEnvOrPanic("MONGODB_COLLECTION_METADATA"),
+		CollectionLogs:     settings.GetEnvOrPanic("MONGODB_COLLECTION_LOGS"),
+		Timeout:            settings.ParseDuration(settings.GetEnv("MONGODB_TIMEOUT", "10s")),
+		MaxPoolSize:        settings.ParseUint64(settings.GetEnv("MONGODB_MAX_POOL_SIZE", "100")),
+		MinPoolSize:        settings.ParseUint64(settings.GetEnv("MONGODB_MIN_POOL_SIZE", "10")),
 	}
 
 	reader, client, err := metadata.OpenMongoJobsReader(ctx, config)
