@@ -11,18 +11,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// MetadataHandler handles HTTP requests for job metadata.
-type MetadataHandler struct {
+// JobsHandler handles HTTP requests for job metadata.
+type JobsHandler struct {
 	svc *service.MetadataService
 }
 
-// NewMetadataHandler creates a new metadata handler.
-func NewMetadataHandler(svc *service.MetadataService) *MetadataHandler {
-	return &MetadataHandler{svc: svc}
+// NewJobsHandler creates a new metadata handler.
+func NewJobsHandler(svc *service.MetadataService) *JobsHandler {
+	return &JobsHandler{svc: svc}
 }
 
-// CreateJobRequest represents the request body for creating a job.
-type CreateJobRequest struct {
+// EnqueueJobRequest represents the request body for enqueuing a job.
+type EnqueueJobRequest struct {
 	Name     string         `json:"name" binding:"required"`
 	Payload  map[string]any `json:"payload"`
 	Priority *int           `json:"priority"`
@@ -30,9 +30,10 @@ type CreateJobRequest struct {
 	Metadata map[string]any `json:"metadata"`
 }
 
-// CreateJob handles POST /api/jobs.
-func (h *MetadataHandler) CreateJob(c *gin.Context) {
-	var req CreateJobRequest
+// EnqueueJob handles POST /api/jobs.
+// Enqueuing logic (dispatch to workers or an external queue) is not implemented yet and will be added at a later stage.
+func (h *JobsHandler) EnqueueJob(c *gin.Context) {
+	var req EnqueueJobRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -58,7 +59,7 @@ func (h *MetadataHandler) CreateJob(c *gin.Context) {
 }
 
 // GetJob handles GET /api/jobs/:id.
-func (h *MetadataHandler) GetJob(c *gin.Context) {
+func (h *JobsHandler) GetJob(c *gin.Context) {
 	jobID := c.Param("id")
 
 	job, err := h.svc.GetJob(c.Request.Context(), jobID)
@@ -75,7 +76,7 @@ func (h *MetadataHandler) GetJob(c *gin.Context) {
 }
 
 // ListJobs handles GET /api/jobs.
-func (h *MetadataHandler) ListJobs(c *gin.Context) {
+func (h *JobsHandler) ListJobs(c *gin.Context) {
 	filter := metadata.ListFilter{
 		Limit:    parseIntQuery(c, "limit", 50),
 		Skip:     parseIntQuery(c, "skip", 0),
@@ -111,56 +112,13 @@ func (h *MetadataHandler) ListJobs(c *gin.Context) {
 	})
 }
 
-// StartJob handles POST /api/jobs/:id/start.
-func (h *MetadataHandler) StartJob(c *gin.Context) {
-	jobID := c.Param("id")
-
-	if err := h.svc.StartJob(c.Request.Context(), jobID); err != nil {
-		if errors.Is(err, metadata.ErrJobNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
-			return
-		}
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "job started"})
-}
-
-// CompleteJobRequest represents the request body for completing a job.
-type CompleteJobRequest struct {
-	Result map[string]any `json:"result"`
-}
-
-// CompleteJob handles POST /api/jobs/:id/complete.
-func (h *MetadataHandler) CompleteJob(c *gin.Context) {
-	jobID := c.Param("id")
-
-	var req CompleteJobRequest
-	if err := bindOptionalJSON(c, &req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := h.svc.CompleteJob(c.Request.Context(), jobID, req.Result); err != nil {
-		if errors.Is(err, metadata.ErrJobNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
-			return
-		}
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "job completed"})
-}
-
 // FailJobRequest represents the request body for failing a job.
 type FailJobRequest struct {
 	Error string `json:"error" binding:"required"`
 }
 
 // FailJob handles POST /api/jobs/:id/fail.
-func (h *MetadataHandler) FailJob(c *gin.Context) {
+func (h *JobsHandler) FailJob(c *gin.Context) {
 	jobID := c.Param("id")
 
 	var req FailJobRequest
@@ -187,7 +145,7 @@ type CancelJobRequest struct {
 }
 
 // CancelJob handles POST /api/jobs/:id/cancel.
-func (h *MetadataHandler) CancelJob(c *gin.Context) {
+func (h *JobsHandler) CancelJob(c *gin.Context) {
 	jobID := c.Param("id")
 
 	var req CancelJobRequest
@@ -209,7 +167,7 @@ func (h *MetadataHandler) CancelJob(c *gin.Context) {
 }
 
 // RetryJob handles POST /api/jobs/:id/retry.
-func (h *MetadataHandler) RetryJob(c *gin.Context) {
+func (h *JobsHandler) RetryJob(c *gin.Context) {
 	jobID := c.Param("id")
 
 	if err := h.svc.RetryJob(c.Request.Context(), jobID); err != nil {
@@ -225,7 +183,7 @@ func (h *MetadataHandler) RetryJob(c *gin.Context) {
 }
 
 // GetJobLogs handles GET /api/jobs/:id/logs.
-func (h *MetadataHandler) GetJobLogs(c *gin.Context) {
+func (h *JobsHandler) GetJobLogs(c *gin.Context) {
 	jobID := c.Param("id")
 
 	filter := metadata.LogFilter{
@@ -258,7 +216,7 @@ func (h *MetadataHandler) GetJobLogs(c *gin.Context) {
 }
 
 // GetJobStats handles GET /api/jobs/stats.
-func (h *MetadataHandler) GetJobStats(c *gin.Context) {
+func (h *JobsHandler) GetJobStats(c *gin.Context) {
 	stats, err := h.svc.GetJobStats(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

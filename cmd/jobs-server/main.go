@@ -37,7 +37,7 @@ func main() {
 	}
 
 	metadataSvc := service.NewMetadataService(reader, writer)
-	metaHandler := handler.NewMetadataHandler(metadataSvc)
+	jobsHandler := handler.NewJobsHandler(metadataSvc)
 
 	r := gin.Default()
 
@@ -51,16 +51,14 @@ func main() {
 	apiRoutes := r.Group("/api")
 	jobs := apiRoutes.Group("/jobs")
 	{
-		jobs.GET("", metaHandler.ListJobs)
-		jobs.POST("", metaHandler.CreateJob)
-		jobs.GET("/stats", metaHandler.GetJobStats)
-		jobs.GET("/:id", metaHandler.GetJob)
-		jobs.POST("/:id/start", metaHandler.StartJob)
-		jobs.POST("/:id/complete", metaHandler.CompleteJob)
-		jobs.POST("/:id/fail", metaHandler.FailJob)
-		jobs.POST("/:id/cancel", metaHandler.CancelJob)
-		jobs.POST("/:id/retry", metaHandler.RetryJob)
-		jobs.GET("/:id/logs", metaHandler.GetJobLogs)
+		jobs.GET("", jobsHandler.ListJobs)
+		jobs.POST("", jobsHandler.EnqueueJob)
+		jobs.GET("/stats", jobsHandler.GetJobStats)
+		jobs.GET("/:id", jobsHandler.GetJob)
+		jobs.POST("/:id/fail", jobsHandler.FailJob)
+		jobs.POST("/:id/cancel", jobsHandler.CancelJob)
+		jobs.POST("/:id/retry", jobsHandler.RetryJob)
+		jobs.GET("/:id/logs", jobsHandler.GetJobLogs)
 	}
 
 	port := settings.GetEnvOrPanic("PORT")
