@@ -32,19 +32,19 @@ func (bogusJobMeta) GetRetryCount() int                  { return 0 }
 func (bogusJobMeta) GetTags() []string                   { return nil }
 func (bogusJobMeta) Validate() error                     { return nil }
 
-// Integration tests require MongoDB (for example: docker compose up -d).
+// Integration tests require MongoDB (for example: make mongo-up).
 // Run: make test-integration
 //
-// MONGO_URI defaults to the same connection string as cmd/jobs-cli when unset.
+// Set MONGODB_URI in the environment (see .env.example); it must match your compose/dev MongoDB.
 
 func testMongoConfig(tb testing.TB) MongoConfig {
 	tb.Helper()
 	if testing.Short() {
 		tb.Skip("skipping integration test (-short)")
 	}
-	uri := os.Getenv("MONGO_URI")
+	uri := os.Getenv("MONGODB_URI")
 	if uri == "" {
-		uri = "mongodb://jobby_app:jobby_app_pass@localhost:27018/jobby?authSource=jobby"
+		tb.Fatalf("MONGODB_URI is not set (required for integration tests; see .env and compose.yml files)")
 	}
 	return MongoConfig{
 		URI:                uri,
