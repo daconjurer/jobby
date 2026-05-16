@@ -1,19 +1,21 @@
 services:
-  postgres:
-    image: postgres:17.4
+  mongodb:
+    image: mongo:8.0
     ports:
-      - "5440:5432"
+      - "27018:27017"
     environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      MONGO_INITDB_ROOT_USERNAME: jobby_admin
+      MONGO_INITDB_ROOT_PASSWORD: jobby_admin_pass
+      MONGO_INITDB_DATABASE: jobby
     volumes:
-      - jobs_data:/var/lib/postgresql/data
+      - mongodb_data:/data/db
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
 volumes:
-  jobs_data:
+  mongodb_data:
