@@ -87,7 +87,7 @@ func TestJobStatus_CanTransitionTo(t *testing.T) {
 
 		// Invalid transitions from pending
 		{"pending to completed", JobStatusPending, JobStatusCompleted, false},
-		{"pending to failed", JobStatusPending, JobStatusFailed, false},
+		{"pending to failed", JobStatusPending, JobStatusFailed, true},
 		{"pending to pending", JobStatusPending, JobStatusPending, false},
 
 		// Valid transitions from running

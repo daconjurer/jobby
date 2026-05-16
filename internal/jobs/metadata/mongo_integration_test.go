@@ -35,9 +35,11 @@ func (bogusJobMeta) Validate() error                     { return nil }
 // Integration tests require MongoDB (for example: make mongo-up).
 // Run: make test-integration
 //
-// Set MONGODB_URI in the environment (see .env.example); it must match your compose/dev MongoDB.
+// Required: MONGODB_URI.
+// Optional (defaults match cmd/jobs-server and .env.example): MONGODB_DATABASE, MONGODB_COLLECTION_METADATA,
+// MONGODB_COLLECTION_LOGS.
 
-func testMongoConfig(tb testing.TB) MongoConfig {
+func integrationMongoEnv(tb testing.TB) MongoConfig {
 	tb.Helper()
 	if testing.Short() {
 		tb.Skip("skipping integration test (-short)")
@@ -46,11 +48,23 @@ func testMongoConfig(tb testing.TB) MongoConfig {
 	if uri == "" {
 		tb.Fatalf("MONGODB_URI is not set (required for integration tests; see .env and compose.yml files)")
 	}
+	db := os.Getenv("MONGODB_DATABASE")
+	if db == "" {
+		db = "jobby"
+	}
+	metaColl := os.Getenv("MONGODB_COLLECTION_METADATA")
+	if metaColl == "" {
+		metaColl = "job_metadata"
+	}
+	logsColl := os.Getenv("MONGODB_COLLECTION_LOGS")
+	if logsColl == "" {
+		logsColl = "job_logs"
+	}
 	return MongoConfig{
 		URI:                uri,
-		Database:           "jobby",
-		CollectionMetadata: "job_metadata",
-		CollectionLogs:     "job_logs",
+		Database:           db,
+		CollectionMetadata: metaColl,
+		CollectionLogs:     logsColl,
 		Timeout:            30 * time.Second,
 		MaxPoolSize:        50,
 		MinPoolSize:        0,
@@ -104,7 +118,7 @@ func teardownIntegrationCollections(ctx context.Context, db *mongo.Database, cfg
 // prepareIntegrationMongoPersistence opens one client shared by collection cleanup plus reader/writer handles.
 func prepareIntegrationMongoPersistence(t *testing.T) (ctx context.Context, cfg MongoConfig, reader *MongoJobsReader, writer *MongoJobsWriter) {
 	t.Helper()
-	cfg = testMongoConfig(t)
+	cfg = integrationMongoEnv(t)
 	ctx = context.Background()
 	client := integrationConnect(t, ctx, cfg)
 	db := client.Database(cfg.Database)
@@ -130,7 +144,7 @@ func prepareIntegrationMongoPersistence(t *testing.T) (ctx context.Context, cfg 
 // provisioned by compose/mongo-init.js; other subtests exercise CRUD paths with fresh fixtures.
 func TestIntegration_MongoJobsPersistence(t *testing.T) {
 	ctxBase := context.Background()
-	cfgBase := testMongoConfig(t)
+	cfgBase := integrationMongoEnv(t)
 
 	t.Run("EnsureIndexes", func(t *testing.T) {
 		reader, writer, client, err := OpenMongoJobs(ctxBase, cfgBase)

@@ -96,7 +96,7 @@ func (s JobStatus) CanTransitionTo(target JobStatus) bool {
 
 	switch s {
 	case JobStatusPending:
-		return target == JobStatusRunning || target == JobStatusCancelled
+		return target == JobStatusRunning || target == JobStatusCancelled || target == JobStatusFailed
 	case JobStatusRunning:
 		return target == JobStatusCompleted || target == JobStatusFailed || target == JobStatusCancelled
 	default:
