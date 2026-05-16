@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"github.com/daconjurer/jobby/internal/jobs/service"
+	"github.com/gin-gonic/gin"
 )
 
 // MetadataHandler handles HTTP requests for job metadata.

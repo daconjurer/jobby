@@ -38,7 +38,7 @@ func (r *MongoJobsReader) Get(ctx context.Context, jobID string) (JobMetadata, e
 }
 
 // List retrieves job metadata with filtering and pagination.
-func (r *MongoJobsReader) List(ctx context.Context, filter ListFilter) ([]JobMetadata, error) {
+func (r *MongoJobsReader) List(ctx context.Context, filter ListFilter) (jobs []JobMetadata, err error) {
 	query := buildListQuery(filter)
 
 	opts := options.Find()
@@ -66,18 +66,21 @@ func (r *MongoJobsReader) List(ctx context.Context, filter ListFilter) ([]JobMet
 	if err != nil {
 		return nil, fmt.Errorf("failed to list jobs: %w", err)
 	}
-	defer cursor.Close(ctx)
+	defer func() {
+		if cerr := cursor.Close(ctx); cerr != nil {
+			err = errors.Join(err, fmt.Errorf("close cursor: %w", cerr))
+		}
+	}()
 
-	var jobs []JobMetadata
 	for cursor.Next(ctx) {
 		var job JobMetadataModel
-		if err := cursor.Decode(&job); err != nil {
-			return nil, fmt.Errorf("failed to decode job: %w", err)
+		if decodeErr := cursor.Decode(&job); decodeErr != nil {
+			return nil, fmt.Errorf("failed to decode job: %w", decodeErr)
 		}
 		jobs = append(jobs, &job)
 	}
 
-	if err := cursor.Err(); err != nil {
+	if err = cursor.Err(); err != nil {
 		return nil, fmt.Errorf("cursor error: %w", err)
 	}
 
@@ -115,7 +118,7 @@ func (r *MongoJobsReader) GetPendingJobs(ctx context.Context, limit int) ([]JobM
 }
 
 // GetLogs retrieves logs for a specific job with optional filtering.
-func (r *MongoJobsReader) GetLogs(ctx context.Context, jobID string, filter LogFilter) ([]JobLog, error) {
+func (r *MongoJobsReader) GetLogs(ctx context.Context, jobID string, filter LogFilter) (logs []JobLog, err error) {
 	query := buildLogsQuery(jobID, filter)
 
 	opts := options.Find()
@@ -134,18 +137,21 @@ func (r *MongoJobsReader) GetLogs(ctx context.Context, jobID string, filter LogF
 	if err != nil {
 		return nil, fmt.Errorf("failed to get logs: %w", err)
 	}
-	defer cursor.Close(ctx)
+	defer func() {
+		if cerr := cursor.Close(ctx); cerr != nil {
+			err = errors.Join(err, fmt.Errorf("close cursor: %w", cerr))
+		}
+	}()
 
-	var logs []JobLog
 	for cursor.Next(ctx) {
 		var lg JobLog
-		if err := cursor.Decode(&lg); err != nil {
-			return nil, fmt.Errorf("failed to decode log: %w", err)
+		if decodeErr := cursor.Decode(&lg); decodeErr != nil {
+			return nil, fmt.Errorf("failed to decode log: %w", decodeErr)
 		}
 		logs = append(logs, lg)
 	}
 
-	if err := cursor.Err(); err != nil {
+	if err = cursor.Err(); err != nil {
 		return nil, fmt.Errorf("cursor error: %w", err)
 	}
 
