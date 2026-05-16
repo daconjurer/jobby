@@ -1,25 +1,28 @@
 #! /bin/bash
 
+set -u
+
+lint_status=0
+format_status=0
+
 echo "make lint"
-make lint DIFF=1
-if [ $? -ne 0 ]; then
-    echo "Error: lint failed"
-    exit 1
+if ! make lint; then
+  lint_status=1
+  echo "Error: lint failed" >&2
 fi
-echo "DONE!"
 
 echo "make format"
-make format DIFF=1
-if [ $? -ne 0 ]; then
-    echo "Error: format failed"
-    exit 1
+if ! make format; then
+  format_status=1
+  echo "Error: format failed" >&2
 fi
-echo "DONE!"
 
-echo "make type-check"
-make type-check
-if [ $? -ne 0 ]; then
-    echo "Error: type-check failed"
-    exit 1
+if [ "$lint_status" -ne 0 ] || [ "$format_status" -ne 0 ]; then
+  echo >&2
+  echo "One or more checks failed:" >&2
+  [ "$lint_status" -ne 0 ] && echo "  - lint" >&2
+  [ "$format_status" -ne 0 ] && echo "  - format" >&2
+  exit 1
 fi
-echo "DONE!"
+
+echo "DONE! All checks passed."
