@@ -3,6 +3,10 @@ bin/
 
 # Test coverage
 .coverage/
+coverage.out
+coverage-unit.out
+coverage-integration.out
+coverage-all.out
 
 # IDE
 .idea/
@@ -16,3 +20,4 @@ Thumbs.db
 
 # Environment
 .env
+docs/internal/
