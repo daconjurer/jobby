@@ -7,12 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daconjurer/jobby/internal/config"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 )
 
 var jobsEnvMongoKeys = []string{
-	config.EnvPrefixEnvKey,
 	"MONGODB_URI",
 	"MONGODB_DATABASE",
 	"MONGODB_COLLECTION_METADATA",
@@ -20,14 +18,6 @@ var jobsEnvMongoKeys = []string{
 	"MONGODB_TIMEOUT",
 	"MONGODB_MAX_POOL_SIZE",
 	"MONGODB_MIN_POOL_SIZE",
-	"JOBBY_MONGODB_URI",
-	"JOBBY_MONGODB_DATABASE",
-	"JOBBY_MONGODB_COLLECTION_METADATA",
-	"JOBBY_MONGODB_COLLECTION_LOGS",
-	"JOBBY_MONGODB_TIMEOUT",
-	"JOBBY_MONGODB_MAX_POOL_SIZE",
-	"JOBBY_MONGODB_MIN_POOL_SIZE",
-	"JOBBY_PORT",
 }
 
 func temporaryUnsetEnv(t *testing.T, keys ...string) {

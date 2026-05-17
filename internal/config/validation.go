@@ -35,11 +35,11 @@ func (c *MongoConfig) Validate() error {
 func (c *ServerConfig) Validate() error {
 	port, err := strconv.Atoi(c.Port)
 	if err != nil {
-		return fmt.Errorf("PORT must be a valid integer (got %q): set PORT to a numeric listen port", c.Port)
+		return fmt.Errorf("APP_PORT must be a valid integer (got %q): set APP_PORT to a numeric listen port", c.Port)
 	}
 	if port < 1024 || port > 65535 {
 		return fmt.Errorf(
-			"PORT (%d) must be between 1024 and 65535 (non-privileged range): choose a port your process may bind to",
+			"APP_PORT (%d) must be between 1024 and 65535 (non-privileged range): choose a port your process may bind to",
 			port,
 		)
 	}

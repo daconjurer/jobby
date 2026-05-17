@@ -68,10 +68,10 @@ func TestMongoEnv_DefaultOptionalMatchesTagDefaults(t *testing.T) {
 	}
 }
 
-func TestServerEnv_BackwardsCompatibleWithExplicitPort(t *testing.T) {
-	temporaryUnsetEnv(t, "PORT", "JOBBY_PORT", EnvPrefixEnvKey)
+func TestServerEnv_WithExplicitAppPort(t *testing.T) {
+	temporaryUnsetEnv(t, "APP_PORT")
 	const wantPort = "8085"
-	t.Setenv("PORT", wantPort)
+	t.Setenv("APP_PORT", wantPort)
 
 	var sc ServerConfig
 	if err := LoadInto(&sc); err != nil {
@@ -83,8 +83,8 @@ func TestServerEnv_BackwardsCompatibleWithExplicitPort(t *testing.T) {
 	if err := sc.Validate(); err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
-	if os.Getenv("PORT") != wantPort {
-		t.Fatalf("expected PORT in environment")
+	if os.Getenv("APP_PORT") != wantPort {
+		t.Fatalf("expected APP_PORT in environment")
 	}
 }
 

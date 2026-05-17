@@ -9,7 +9,7 @@ import (
 
 func loadMongoMetadataConfig() (metadata.MongoConfig, error) {
 	var mc config.MongoConfig
-	if err := config.LoadIntoWithOptions(&mc, config.LoadOptionsFromEnv()); err != nil {
+	if err := config.LoadInto(&mc); err != nil {
 		return metadata.MongoConfig{}, fmt.Errorf("parsing mongo config: %w", err)
 	}
 	if err := mc.Validate(); err != nil {

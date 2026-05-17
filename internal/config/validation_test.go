@@ -60,7 +60,7 @@ func TestServerConfig_Validate_InvalidPort(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "PORT") || !strings.Contains(err.Error(), "not-a-number") {
+	if !strings.Contains(err.Error(), "APP_PORT") || !strings.Contains(err.Error(), "not-a-number") {
 		t.Fatalf("expected invalid port detail: %v", err)
 	}
 }
@@ -130,56 +130,3 @@ func TestLoadIntoWithOptions_NilDestination(t *testing.T) {
 	}
 }
 
-func TestLoadIntoWithOptions_PrefixedFallback(t *testing.T) {
-	temporaryUnsetEnv(t, mongoEnvKeys...)
-	t.Setenv("JOBBY_MONGODB_URI", "mongodb://pref")
-	t.Setenv("JOBBY_MONGODB_DATABASE", "d")
-	t.Setenv("JOBBY_MONGODB_COLLECTION_METADATA", "meta")
-	t.Setenv("JOBBY_MONGODB_COLLECTION_LOGS", "logs")
-	t.Setenv("JOBBY_MONGODB_TIMEOUT", "4s")
-	t.Setenv("JOBBY_MONGODB_MAX_POOL_SIZE", "30")
-	t.Setenv("JOBBY_MONGODB_MIN_POOL_SIZE", "5")
-
-	var mc MongoConfig
-	if err := LoadIntoWithOptions(&mc, env.Options{Prefix: "JOBBY_"}); err != nil {
-		t.Fatalf("LoadIntoWithOptions: %v", err)
-	}
-	if mc.URI != "mongodb://pref" || mc.Timeout != 4*time.Second || mc.MaxPoolSize != 30 {
-		t.Fatalf("unexpected config: %+v", mc)
-	}
-	if err := mc.Validate(); err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
-}
-
-func TestLoadIntoWithOptions_CanonicalWinsOverPrefix(t *testing.T) {
-	temporaryUnsetEnv(t, mongoEnvKeys...)
-	t.Setenv("MONGODB_URI", "mongodb://canonical")
-	t.Setenv("JOBBY_MONGODB_URI", "mongodb://shadow")
-	t.Setenv("MONGODB_DATABASE", "d")
-	t.Setenv("MONGODB_COLLECTION_METADATA", "meta")
-	t.Setenv("MONGODB_COLLECTION_LOGS", "logs")
-
-	var mc MongoConfig
-	if err := LoadIntoWithOptions(&mc, env.Options{Prefix: "JOBBY_"}); err != nil {
-		t.Fatalf("LoadIntoWithOptions: %v", err)
-	}
-	if mc.URI != "mongodb://canonical" {
-		t.Fatalf("canonical URI should win, got %q", mc.URI)
-	}
-}
-
-func TestLoadOptionsFromEnv_AppliesPrefix(t *testing.T) {
-	temporaryUnsetEnv(t, mongoEnvKeys...)
-	t.Setenv(EnvPrefixEnvKey, "JOBBY_")
-	t.Setenv("JOBBY_PORT", "8080")
-
-	var sc ServerConfig
-	opts := LoadOptionsFromEnv()
-	if err := LoadIntoWithOptions(&sc, opts); err != nil {
-		t.Fatalf("LoadIntoWithOptions: %v", err)
-	}
-	if sc.Port != "8080" {
-		t.Fatalf("Port: got %q", sc.Port)
-	}
-}

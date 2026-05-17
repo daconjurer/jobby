@@ -53,34 +53,13 @@ func TestEndToEnd_ValidConfig(t *testing.T) {
 	}
 }
 
-func TestEndToEnd_PrefixValidConfig(t *testing.T) {
-	temporaryUnsetEnv(t, mongoEnvKeys...)
-	t.Setenv(EnvPrefixEnvKey, "JOBBY_")
-	t.Setenv("JOBBY_MONGODB_URI", "mongodb://p")
-	t.Setenv("JOBBY_MONGODB_DATABASE", "j")
-	t.Setenv("JOBBY_MONGODB_COLLECTION_METADATA", "a")
-	t.Setenv("JOBBY_MONGODB_COLLECTION_LOGS", "b")
-	t.Setenv("JOBBY_MONGODB_TIMEOUT", "2s")
-	t.Setenv("JOBBY_MONGODB_MAX_POOL_SIZE", "20")
-	t.Setenv("JOBBY_MONGODB_MIN_POOL_SIZE", "10")
-
-	var mc MongoConfig
-	opts := LoadOptionsFromEnv()
-	if err := LoadIntoWithOptions(&mc, opts); err != nil {
-		t.Fatalf("LoadIntoWithOptions: %v", err)
-	}
-	if err := mc.Validate(); err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
-}
-
 func TestEndToEnd_CustomOptionsWithoutImplicitMerge(t *testing.T) {
 	temporaryUnsetEnv(t, mongoEnvKeys...)
 	custom := map[string]string{
-		"MONGODB_URI":                "mongodb://map",
-		"MONGODB_DATABASE":           "d",
+		"MONGODB_URI":                 "mongodb://map",
+		"MONGODB_DATABASE":            "d",
 		"MONGODB_COLLECTION_METADATA": "m",
-		"MONGODB_COLLECTION_LOGS":    "l",
+		"MONGODB_COLLECTION_LOGS":     "l",
 	}
 	var mc MongoConfig
 	err := LoadIntoWithOptions(&mc, env.Options{Environment: custom})

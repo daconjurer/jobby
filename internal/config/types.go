@@ -4,7 +4,7 @@ import "time"
 
 // ServerConfig holds HTTP server settings loaded from environment variables.
 type ServerConfig struct {
-	Port string `env:"PORT,required,notEmpty"`
+	Port string `env:"APP_PORT,required,notEmpty"`
 }
 
 // MongoConfig holds MongoDB connection and pool settings loaded from environment variables.

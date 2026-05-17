@@ -14,13 +14,11 @@ if err := mc.Validate(); err != nil {
 }
 ```
 
-Binaries use [`LoadIntoWithOptions`](./loader.go) with [`LoadOptionsFromEnv`](./loader.go) so optional [`JOBBY_ENV_PREFIX`](./loader.go) is honored (see below).
-
 ## Configuration reference
 
 | Variable | Type | Default | Required | Notes |
 |----------|------|---------|----------|--------|
-| `PORT` | string | — | yes | Must parse as integer **1024–65535** after load ([`ServerConfig.Validate`](./validation.go)). |
+| `APP_PORT` | string | — | yes | Must parse as integer **1024–65535** after load ([`ServerConfig.Validate`](./validation.go)). |
 | `MONGODB_URI` | string | — | yes | Non-empty connection URI. |
 | `MONGODB_DATABASE` | string | — | yes | Database name. |
 | `MONGODB_COLLECTION_METADATA` | string | — | yes | Metadata collection. |
@@ -29,12 +27,6 @@ Binaries use [`LoadIntoWithOptions`](./loader.go) with [`LoadOptionsFromEnv`](./
 | `MONGODB_MAX_POOL_SIZE` | uint64 | `100` | no | Must be **≥ `MONGODB_MIN_POOL_SIZE`** and **≤ 1000**. |
 | `MONGODB_MIN_POOL_SIZE` | uint64 | `10` | no | See max pool rule. |
 
-## Prefixed variables (`JOBBY_*`)
-
-Set `JOBBY_ENV_PREFIX` to a prefix such as `JOBBY_`. For each canonical variable above, if it is **missing or empty** in the environment, the loader will use `PREFIX` + canonical name (e.g. `JOBBY_PORT` when `PORT` is unset). If both are set, the **canonical** name wins.
-
-This avoids collisions in shared shells or orchestration without breaking existing unprefixed deployments.
-
 ## Validation rules
 
 | Check | Rationale |
@@ -42,7 +34,7 @@ This avoids collisions in shared shells or orchestration without breaking existi
 | `MONGODB_MAX_POOL_SIZE` ≥ `MONGODB_MIN_POOL_SIZE` | Driver pool sizing must be consistent. |
 | `MONGODB_TIMEOUT` ≥ 1 second | Very short timeouts tend to fail connects under load. |
 | `MONGODB_MAX_POOL_SIZE` ≤ 1000 | Conservative cap aligned with typical driver/ops limits. |
-| `PORT` is numeric and in **1024–65535** | Avoids privileged ports and invalid listen addresses. |
+| `APP_PORT` is numeric and in **1024–65535** | Avoids privileged ports and invalid listen addresses. |
 
 [`MongoConfig.Validate`](./validation.go) may return multiple errors joined with [`errors.Join`](https://pkg.go.dev/errors#Join).
 
@@ -64,31 +56,20 @@ export MONGODB_COLLECTION_METADATA=job_metadata
 export MONGODB_COLLECTION_LOGS=job_logs
 ```
 
-**Prefixed-only (with feature flag)**
-
-```bash
-export JOBBY_ENV_PREFIX='JOBBY_'
-export JOBBY_MONGODB_URI='mongodb://localhost:27017'
-export JOBBY_MONGODB_DATABASE=jobby
-export JOBBY_MONGODB_COLLECTION_METADATA=job_metadata
-export JOBBY_MONGODB_COLLECTION_LOGS=job_logs
-export JOBBY_PORT=8080
-```
-
 ## Migration from `internal/settings`
 
 The removed `internal/settings` package used ad hoc `GetEnv`/`ParseUint64` helpers. Migrate by:
 
 1. Defining or reusing a struct in this package (`MongoConfig`, `ServerConfig`).
-2. Calling `LoadInto` or `LoadIntoWithOptions` + `LoadOptionsFromEnv`.
+2. Calling `LoadInto`, or `LoadIntoWithOptions` with [`env.Options`](https://github.com/caarlos0/env) when you need a custom environment (e.g. tests).
 3. Calling `Validate()` before connecting to MongoDB or binding the HTTP listener.
 
 ## Troubleshooting
 
 | Symptom | What to check |
 |---------|----------------|
-| `required tag` / missing key | Set the canonical variable or the prefixed fallback with `JOBBY_ENV_PREFIX`. |
+| `required tag` / missing key | Set the variable from the configuration reference table above. |
 | `must be >= MONGODB_MIN_POOL_SIZE` | Raise max or lower min pool size. |
 | `must be at least 1s` | Increase `MONGODB_TIMEOUT`. |
 | `exceeds the allowed maximum (1000)` | Lower `MONGODB_MAX_POOL_SIZE`. |
-| `PORT` out of range | Use a port from 1024 through 65535. |
+| `APP_PORT` out of range | Use a port from 1024 through 65535. |

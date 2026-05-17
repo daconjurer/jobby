@@ -126,8 +126,8 @@ func TestLoadInto_Mongo_InvalidUint64(t *testing.T) {
 }
 
 func TestLoadInto_Server_HappyPath(t *testing.T) {
-	temporaryUnsetEnv(t, "PORT")
-	t.Setenv("PORT", "8080")
+	temporaryUnsetEnv(t, "APP_PORT")
+	t.Setenv("APP_PORT", "8080")
 
 	var cfg ServerConfig
 	if err := LoadInto(&cfg); err != nil {
@@ -139,24 +139,24 @@ func TestLoadInto_Server_HappyPath(t *testing.T) {
 }
 
 func TestLoadInto_Server_MissingRequired(t *testing.T) {
-	temporaryUnsetEnv(t, "PORT")
+	temporaryUnsetEnv(t, "APP_PORT")
 
 	var cfg ServerConfig
 	err := LoadInto(&cfg)
 	if err == nil {
-		t.Fatal("expected error when PORT missing")
+		t.Fatal("expected error when APP_PORT missing")
 	}
 	t.Log(err)
 }
 
 func TestLoadInto_Server_EmptyPort(t *testing.T) {
-	temporaryUnsetEnv(t, "PORT")
-	t.Setenv("PORT", "")
+	temporaryUnsetEnv(t, "APP_PORT")
+	t.Setenv("APP_PORT", "")
 
 	var cfg ServerConfig
 	err := LoadInto(&cfg)
 	if err == nil {
-		t.Fatal("expected error when PORT is empty")
+		t.Fatal("expected error when APP_PORT is empty")
 	}
 	t.Log(err)
 }

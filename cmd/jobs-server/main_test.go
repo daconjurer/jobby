@@ -7,12 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daconjurer/jobby/internal/config"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 )
 
 var jobsEnvMongoKeys = []string{
-	config.EnvPrefixEnvKey,
 	"MONGODB_URI",
 	"MONGODB_DATABASE",
 	"MONGODB_COLLECTION_METADATA",
@@ -20,14 +18,6 @@ var jobsEnvMongoKeys = []string{
 	"MONGODB_TIMEOUT",
 	"MONGODB_MAX_POOL_SIZE",
 	"MONGODB_MIN_POOL_SIZE",
-	"JOBBY_MONGODB_URI",
-	"JOBBY_MONGODB_DATABASE",
-	"JOBBY_MONGODB_COLLECTION_METADATA",
-	"JOBBY_MONGODB_COLLECTION_LOGS",
-	"JOBBY_MONGODB_TIMEOUT",
-	"JOBBY_MONGODB_MAX_POOL_SIZE",
-	"JOBBY_MONGODB_MIN_POOL_SIZE",
-	"JOBBY_PORT",
 }
 
 func temporaryUnsetEnv(t *testing.T, keys ...string) {
@@ -89,8 +79,8 @@ func TestLoadMongoMetadataConfig(t *testing.T) {
 }
 
 func TestLoadServerListenConfig(t *testing.T) {
-	temporaryUnsetEnv(t, "PORT", "JOBBY_PORT", config.EnvPrefixEnvKey)
-	t.Setenv("PORT", "9090")
+	temporaryUnsetEnv(t, "APP_PORT")
+	t.Setenv("APP_PORT", "9090")
 
 	got, err := loadServerListenConfig()
 	if err != nil {
@@ -121,8 +111,8 @@ func TestLoadMongoMetadataConfig_ValidationFailure(t *testing.T) {
 }
 
 func TestLoadServerListenConfig_ValidationFailure(t *testing.T) {
-	temporaryUnsetEnv(t, "PORT", "JOBBY_PORT", config.EnvPrefixEnvKey)
-	t.Setenv("PORT", "80")
+	temporaryUnsetEnv(t, "APP_PORT")
+	t.Setenv("APP_PORT", "80")
 
 	_, err := loadServerListenConfig()
 	if err == nil {
@@ -146,10 +136,10 @@ func TestLoadMongoMetadataConfig_MissingRequired(t *testing.T) {
 }
 
 func TestLoadServerListenConfig_MissingPort(t *testing.T) {
-	temporaryUnsetEnv(t, "PORT", "JOBBY_PORT", config.EnvPrefixEnvKey)
+	temporaryUnsetEnv(t, "APP_PORT")
 
 	_, err := loadServerListenConfig()
 	if err == nil {
-		t.Fatal("expected error when PORT is unset")
+		t.Fatal("expected error when APP_PORT is unset")
 	}
 }
