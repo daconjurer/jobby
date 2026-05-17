@@ -3,13 +3,16 @@ package main
 import (
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/daconjurer/jobby/internal/config"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 )
 
 var jobsEnvMongoKeys = []string{
+	config.EnvPrefixEnvKey,
 	"MONGODB_URI",
 	"MONGODB_DATABASE",
 	"MONGODB_COLLECTION_METADATA",
@@ -17,6 +20,14 @@ var jobsEnvMongoKeys = []string{
 	"MONGODB_TIMEOUT",
 	"MONGODB_MAX_POOL_SIZE",
 	"MONGODB_MIN_POOL_SIZE",
+	"JOBBY_MONGODB_URI",
+	"JOBBY_MONGODB_DATABASE",
+	"JOBBY_MONGODB_COLLECTION_METADATA",
+	"JOBBY_MONGODB_COLLECTION_LOGS",
+	"JOBBY_MONGODB_TIMEOUT",
+	"JOBBY_MONGODB_MAX_POOL_SIZE",
+	"JOBBY_MONGODB_MIN_POOL_SIZE",
+	"JOBBY_PORT",
 }
 
 func temporaryUnsetEnv(t *testing.T, keys ...string) {
@@ -74,6 +85,25 @@ func TestLoadMongoMetadataConfig(t *testing.T) {
 	}
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("mongo config mismatch\nwant %+v\ngot %+v", want, got)
+	}
+}
+
+func TestLoadMongoMetadataConfig_ValidationFailure(t *testing.T) {
+	temporaryUnsetEnv(t, jobsEnvMongoKeys...)
+	t.Setenv("MONGODB_URI", "mongodb://x")
+	t.Setenv("MONGODB_DATABASE", "db")
+	t.Setenv("MONGODB_COLLECTION_METADATA", "m")
+	t.Setenv("MONGODB_COLLECTION_LOGS", "l")
+	t.Setenv("MONGODB_TIMEOUT", "5s")
+	t.Setenv("MONGODB_MAX_POOL_SIZE", "3")
+	t.Setenv("MONGODB_MIN_POOL_SIZE", "40")
+
+	_, err := loadMongoMetadataConfig()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "validating mongo config") {
+		t.Fatalf("expected validation wrap, got: %v", err)
 	}
 }
 

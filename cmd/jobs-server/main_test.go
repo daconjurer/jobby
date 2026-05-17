@@ -3,13 +3,16 @@ package main
 import (
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/daconjurer/jobby/internal/config"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 )
 
 var jobsEnvMongoKeys = []string{
+	config.EnvPrefixEnvKey,
 	"MONGODB_URI",
 	"MONGODB_DATABASE",
 	"MONGODB_COLLECTION_METADATA",
@@ -17,6 +20,14 @@ var jobsEnvMongoKeys = []string{
 	"MONGODB_TIMEOUT",
 	"MONGODB_MAX_POOL_SIZE",
 	"MONGODB_MIN_POOL_SIZE",
+	"JOBBY_MONGODB_URI",
+	"JOBBY_MONGODB_DATABASE",
+	"JOBBY_MONGODB_COLLECTION_METADATA",
+	"JOBBY_MONGODB_COLLECTION_LOGS",
+	"JOBBY_MONGODB_TIMEOUT",
+	"JOBBY_MONGODB_MAX_POOL_SIZE",
+	"JOBBY_MONGODB_MIN_POOL_SIZE",
+	"JOBBY_PORT",
 }
 
 func temporaryUnsetEnv(t *testing.T, keys ...string) {
@@ -78,7 +89,7 @@ func TestLoadMongoMetadataConfig(t *testing.T) {
 }
 
 func TestLoadServerListenConfig(t *testing.T) {
-	temporaryUnsetEnv(t, "PORT")
+	temporaryUnsetEnv(t, "PORT", "JOBBY_PORT", config.EnvPrefixEnvKey)
 	t.Setenv("PORT", "9090")
 
 	got, err := loadServerListenConfig()
@@ -87,6 +98,38 @@ func TestLoadServerListenConfig(t *testing.T) {
 	}
 	if got.Port != "9090" {
 		t.Fatalf("Port: got %q", got.Port)
+	}
+}
+
+func TestLoadMongoMetadataConfig_ValidationFailure(t *testing.T) {
+	temporaryUnsetEnv(t, jobsEnvMongoKeys...)
+	t.Setenv("MONGODB_URI", "mongodb://x")
+	t.Setenv("MONGODB_DATABASE", "db")
+	t.Setenv("MONGODB_COLLECTION_METADATA", "m")
+	t.Setenv("MONGODB_COLLECTION_LOGS", "l")
+	t.Setenv("MONGODB_TIMEOUT", "5s")
+	t.Setenv("MONGODB_MAX_POOL_SIZE", "20000")
+	t.Setenv("MONGODB_MIN_POOL_SIZE", "1")
+
+	_, err := loadMongoMetadataConfig()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "validating mongo config") {
+		t.Fatalf("expected validation wrap, got: %v", err)
+	}
+}
+
+func TestLoadServerListenConfig_ValidationFailure(t *testing.T) {
+	temporaryUnsetEnv(t, "PORT", "JOBBY_PORT", config.EnvPrefixEnvKey)
+	t.Setenv("PORT", "80")
+
+	_, err := loadServerListenConfig()
+	if err == nil {
+		t.Fatal("expected validation error for privileged port")
+	}
+	if !strings.Contains(err.Error(), "validating server config") {
+		t.Fatalf("expected validation wrap, got: %v", err)
 	}
 }
 
@@ -103,7 +146,7 @@ func TestLoadMongoMetadataConfig_MissingRequired(t *testing.T) {
 }
 
 func TestLoadServerListenConfig_MissingPort(t *testing.T) {
-	temporaryUnsetEnv(t, "PORT")
+	temporaryUnsetEnv(t, "PORT", "JOBBY_PORT", config.EnvPrefixEnvKey)
 
 	_, err := loadServerListenConfig()
 	if err == nil {

@@ -6,6 +6,12 @@ It was terrible.
 
 This project is inspired by the lessons from those days.
 
+## Configuration
+
+Application settings are read from the process environment with [`internal/config`](./internal/config/README.md). After parsing, configs are **validated** (pool bounds, timeouts, listen port).
+
+Optional prefixed variables are supported: set `JOBBY_ENV_PREFIX=JOBBY_` so values can be supplied as `JOBBY_PORT`, `JOBBY_MONGODB_URI`, and so on when the canonical name is unset or empty.
+
 ## Quick Start
 
 ```bash

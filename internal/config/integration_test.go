@@ -3,14 +3,14 @@ package config
 import (
 	"os"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
-	"github.com/daconjurer/jobby/internal/settings"
 )
 
-func TestMongoEnv_BackwardsCompatibleWithSettingsParsing(t *testing.T) {
+func TestMongoEnv_ParseMatchesReferenceFromOSEnv(t *testing.T) {
 	temporaryUnsetEnv(t, mongoEnvKeys...)
 	const (
 		uri      = "mongodb://example"
@@ -26,7 +26,7 @@ func TestMongoEnv_BackwardsCompatibleWithSettingsParsing(t *testing.T) {
 	t.Setenv("MONGODB_MAX_POOL_SIZE", "42")
 	t.Setenv("MONGODB_MIN_POOL_SIZE", "7")
 
-	want := legacyMongoMetadataUsingSettings(t)
+	want := referenceMongoMetadataFromOSEnv(t)
 
 	var mc MongoConfig
 	if err := LoadInto(&mc); err != nil {
@@ -35,32 +35,11 @@ func TestMongoEnv_BackwardsCompatibleWithSettingsParsing(t *testing.T) {
 	got := mongoMetadataFromConfig(mc)
 
 	if !reflect.DeepEqual(want, got) {
-		t.Fatalf("mongo env mismatch vs legacy settings helpers\nwant %+v\ngot %+v", want, got)
+		t.Fatalf("mongo env mismatch vs reference from os.Getenv\nwant %+v\ngot %+v", want, got)
 	}
 }
 
-func legacyMongoMetadataUsingSettings(t *testing.T) metadata.MongoConfig {
-	t.Helper()
-	mustEnv := func(key string) string {
-		t.Helper()
-		v := os.Getenv(key)
-		if v == "" {
-			t.Fatalf("missing env %q", key)
-		}
-		return v
-	}
-	return metadata.MongoConfig{
-		URI:                mustEnv("MONGODB_URI"),
-		Database:           mustEnv("MONGODB_DATABASE"),
-		CollectionMetadata: mustEnv("MONGODB_COLLECTION_METADATA"),
-		CollectionLogs:     mustEnv("MONGODB_COLLECTION_LOGS"),
-		Timeout:            settings.ParseDuration(settings.GetEnv("MONGODB_TIMEOUT", "10s")),
-		MaxPoolSize:        settings.ParseUint64(settings.GetEnv("MONGODB_MAX_POOL_SIZE", "100")),
-		MinPoolSize:        settings.ParseUint64(settings.GetEnv("MONGODB_MIN_POOL_SIZE", "10")),
-	}
-}
-
-func TestMongoEnv_BackwardsCompatible_DefaultOptionalViaSettingsHelpers(t *testing.T) {
+func TestMongoEnv_DefaultOptionalMatchesTagDefaults(t *testing.T) {
 	temporaryUnsetEnv(t, mongoEnvKeys...)
 	const (
 		uri      = "mongodb://example"
@@ -73,7 +52,7 @@ func TestMongoEnv_BackwardsCompatible_DefaultOptionalViaSettingsHelpers(t *testi
 	t.Setenv("MONGODB_COLLECTION_METADATA", metaColl)
 	t.Setenv("MONGODB_COLLECTION_LOGS", logsColl)
 
-	want := legacyMongoMetadataUsingSettings(t)
+	want := referenceMongoMetadataFromOSEnv(t)
 
 	var mc MongoConfig
 	if err := LoadInto(&mc); err != nil {
@@ -85,12 +64,12 @@ func TestMongoEnv_BackwardsCompatible_DefaultOptionalViaSettingsHelpers(t *testi
 		t.Fatalf("defaults mismatch\nwant %+v\ngot %+v", want, got)
 	}
 	if got.Timeout != 10*time.Second || got.MaxPoolSize != 100 || got.MinPoolSize != 10 {
-		t.Fatalf("expected embedded defaults from tags / legacy helpers, got %+v", got)
+		t.Fatalf("expected embedded defaults from tags / reference helpers, got %+v", got)
 	}
 }
 
 func TestServerEnv_BackwardsCompatibleWithExplicitPort(t *testing.T) {
-	temporaryUnsetEnv(t, "PORT")
+	temporaryUnsetEnv(t, "PORT", "JOBBY_PORT", EnvPrefixEnvKey)
 	const wantPort = "8085"
 	t.Setenv("PORT", wantPort)
 
@@ -101,8 +80,56 @@ func TestServerEnv_BackwardsCompatibleWithExplicitPort(t *testing.T) {
 	if sc.Port != wantPort {
 		t.Fatalf("Port: got %q want %q", sc.Port, wantPort)
 	}
+	if err := sc.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
 	if os.Getenv("PORT") != wantPort {
 		t.Fatalf("expected PORT in environment")
+	}
+}
+
+func referenceMongoMetadataFromOSEnv(t *testing.T) metadata.MongoConfig {
+	t.Helper()
+	mustEnv := func(key string) string {
+		t.Helper()
+		v := os.Getenv(key)
+		if v == "" {
+			t.Fatalf("missing env %q", key)
+		}
+		return v
+	}
+	timeoutStr := os.Getenv("MONGODB_TIMEOUT")
+	if timeoutStr == "" {
+		timeoutStr = "10s"
+	}
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		t.Fatalf("MONGODB_TIMEOUT: %v", err)
+	}
+	maxStr := os.Getenv("MONGODB_MAX_POOL_SIZE")
+	if maxStr == "" {
+		maxStr = "100"
+	}
+	maxPool, err := strconv.ParseUint(maxStr, 10, 64)
+	if err != nil {
+		t.Fatalf("MONGODB_MAX_POOL_SIZE: %v", err)
+	}
+	minStr := os.Getenv("MONGODB_MIN_POOL_SIZE")
+	if minStr == "" {
+		minStr = "10"
+	}
+	minPool, err := strconv.ParseUint(minStr, 10, 64)
+	if err != nil {
+		t.Fatalf("MONGODB_MIN_POOL_SIZE: %v", err)
+	}
+	return metadata.MongoConfig{
+		URI:                mustEnv("MONGODB_URI"),
+		Database:           mustEnv("MONGODB_DATABASE"),
+		CollectionMetadata: mustEnv("MONGODB_COLLECTION_METADATA"),
+		CollectionLogs:     mustEnv("MONGODB_COLLECTION_LOGS"),
+		Timeout:            timeout,
+		MaxPoolSize:        maxPool,
+		MinPoolSize:        minPool,
 	}
 }
 

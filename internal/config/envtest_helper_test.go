@@ -7,6 +7,7 @@ import (
 
 // mongoEnvKeys are environment variables exercised by MongoConfig tests.
 var mongoEnvKeys = []string{
+	EnvPrefixEnvKey,
 	"MONGODB_URI",
 	"MONGODB_DATABASE",
 	"MONGODB_COLLECTION_METADATA",
@@ -14,6 +15,14 @@ var mongoEnvKeys = []string{
 	"MONGODB_TIMEOUT",
 	"MONGODB_MAX_POOL_SIZE",
 	"MONGODB_MIN_POOL_SIZE",
+	"JOBBY_MONGODB_URI",
+	"JOBBY_MONGODB_DATABASE",
+	"JOBBY_MONGODB_COLLECTION_METADATA",
+	"JOBBY_MONGODB_COLLECTION_LOGS",
+	"JOBBY_MONGODB_TIMEOUT",
+	"JOBBY_MONGODB_MAX_POOL_SIZE",
+	"JOBBY_MONGODB_MIN_POOL_SIZE",
+	"JOBBY_PORT",
 }
 
 // temporaryUnsetEnv clears the given keys (using [os.Unsetenv]) and registers a cleanup
