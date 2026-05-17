@@ -6,6 +6,10 @@ It was terrible.
 
 This project is inspired by the lessons from those days.
 
+## Configuration
+
+Application settings are read from the process environment with [`internal/config`](./internal/config/README.md). After parsing, configs are **validated** (pool bounds, timeouts, listen port).
+
 ## Quick Start
 
 ```bash

@@ -6,23 +6,17 @@ import (
 	"log"
 
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
-	"github.com/daconjurer/jobby/internal/settings"
 )
 
 func main() {
 	ctx := context.Background()
 
-	config := metadata.MongoConfig{
-		URI:                settings.GetEnvOrPanic("MONGODB_URI"),
-		Database:           settings.GetEnvOrPanic("MONGODB_DATABASE"),
-		CollectionMetadata: settings.GetEnvOrPanic("MONGODB_COLLECTION_METADATA"),
-		CollectionLogs:     settings.GetEnvOrPanic("MONGODB_COLLECTION_LOGS"),
-		Timeout:            settings.ParseDuration(settings.GetEnv("MONGODB_TIMEOUT", "10s")),
-		MaxPoolSize:        settings.ParseUint64(settings.GetEnv("MONGODB_MAX_POOL_SIZE", "100")),
-		MinPoolSize:        settings.ParseUint64(settings.GetEnv("MONGODB_MIN_POOL_SIZE", "10")),
+	mongoCfg, err := loadMongoMetadataConfig()
+	if err != nil {
+		log.Fatalf("Failed to load MongoDB configuration: %v", err)
 	}
 
-	reader, client, err := metadata.OpenMongoJobsReader(ctx, config)
+	reader, client, err := metadata.OpenMongoJobsReader(ctx, mongoCfg)
 	if err != nil {
 		log.Fatalf("Failed to open MongoDB jobs persistence: %v", err)
 	}

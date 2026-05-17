@@ -1,0 +1,27 @@
+package main
+
+import (
+	"fmt"
+
+	"github.com/daconjurer/jobby/internal/config"
+	"github.com/daconjurer/jobby/internal/jobs/metadata"
+)
+
+func loadMongoMetadataConfig() (metadata.MongoConfig, error) {
+	var mc config.MongoConfig
+	if err := config.LoadInto(&mc); err != nil {
+		return metadata.MongoConfig{}, fmt.Errorf("parsing mongo config: %w", err)
+	}
+	if err := mc.Validate(); err != nil {
+		return metadata.MongoConfig{}, fmt.Errorf("validating mongo config: %w", err)
+	}
+	return metadata.MongoConfig{
+		URI:                mc.URI,
+		Database:           mc.Database,
+		CollectionMetadata: mc.CollectionMetadata,
+		CollectionLogs:     mc.CollectionLogs,
+		Timeout:            mc.Timeout,
+		MaxPoolSize:        mc.MaxPoolSize,
+		MinPoolSize:        mc.MinPoolSize,
+	}, nil
+}

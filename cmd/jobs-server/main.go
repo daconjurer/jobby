@@ -8,21 +8,20 @@ import (
 	"github.com/daconjurer/jobby/internal/jobs/handler"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"github.com/daconjurer/jobby/internal/jobs/service"
-	"github.com/daconjurer/jobby/internal/settings"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	ctx := context.Background()
 
-	mongoConfig := metadata.MongoConfig{
-		URI:                settings.GetEnvOrPanic("MONGODB_URI"),
-		Database:           settings.GetEnvOrPanic("MONGODB_DATABASE"),
-		CollectionMetadata: settings.GetEnvOrPanic("MONGODB_COLLECTION_METADATA"),
-		CollectionLogs:     settings.GetEnvOrPanic("MONGODB_COLLECTION_LOGS"),
-		Timeout:            settings.ParseDuration(settings.GetEnv("MONGODB_TIMEOUT", "10s")),
-		MaxPoolSize:        settings.ParseUint64(settings.GetEnv("MONGODB_MAX_POOL_SIZE", "100")),
-		MinPoolSize:        settings.ParseUint64(settings.GetEnv("MONGODB_MIN_POOL_SIZE", "10")),
+	mongoConfig, err := loadMongoMetadataConfig()
+	if err != nil {
+		log.Fatalf("Failed to load MongoDB configuration: %v", err)
+	}
+
+	serverCfg, err := loadServerListenConfig()
+	if err != nil {
+		log.Fatalf("Failed to load server configuration: %v", err)
 	}
 
 	reader, writer, mongoClient, err := metadata.OpenMongoJobs(ctx, mongoConfig)
@@ -61,7 +60,7 @@ func main() {
 		jobs.GET("/:id/logs", jobsHandler.GetJobLogs)
 	}
 
-	port := settings.GetEnvOrPanic("PORT")
+	port := serverCfg.Port
 	log.Printf("Starting jobs service on port %s", port)
 	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
