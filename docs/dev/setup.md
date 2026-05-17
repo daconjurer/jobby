@@ -33,7 +33,7 @@ Database name and collection names align with what **`mongo-init.js`** creates f
 
 # MongoDB and jobs metadata
 
-- **`MONGODB_*`** (and **`PORT`** for the HTTP server) — required by **`cmd/jobs-server`** and
+- **`MONGODB_*`** (and **`APP_PORT`** for the HTTP server) — required by **`cmd/jobs-server`** and
   **`cmd/jobs-cli`** unless you rely on defaults for timeout and pool size; see [**.env.example**](../../.env.example).
 - **`MONGODB_URI`** — also **required** by **`internal/jobs/metadata`** integration tests
   (`make test-integration`); use the same value as for local binaries (from `.env` / your shell).
