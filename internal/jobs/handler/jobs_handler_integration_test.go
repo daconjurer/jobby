@@ -22,8 +22,8 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// Integration tests require MongoDB (for example: make mongo-up).
-// Run: make test-integration
+// Integration tests require MongoDB (for example: task mongo-up).
+// Run: task test-integration
 //
 // Required: MONGODB_URI.
 // Optional (defaults match cmd/jobs-server and .env.example): MONGODB_DATABASE, MONGODB_COLLECTION_METADATA,

@@ -32,8 +32,8 @@ func (bogusJobMeta) GetRetryCount() int                  { return 0 }
 func (bogusJobMeta) GetTags() []string                   { return nil }
 func (bogusJobMeta) Validate() error                     { return nil }
 
-// Integration tests require MongoDB (for example: make mongo-up).
-// Run: make test-integration
+// Integration tests require MongoDB (for example: task mongo-up).
+// Run: task test-integration
 //
 // Required: MONGODB_URI.
 // Optional (defaults match cmd/jobs-server and .env.example): MONGODB_DATABASE, MONGODB_COLLECTION_METADATA,
