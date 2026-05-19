@@ -109,7 +109,7 @@ func ensureJobsIndexes(ctx context.Context, metadataColl, logsColl *mongo.Collec
 		return false, err
 	}
 	if !metaOK {
-		log.Printf("jobby: collection %q is missing one or more expected indexes (see mongo-init); performance may be degraded",
+		log.Printf("jobby: collection %q is missing one or more expected indexes (make sure the migrations are applied); performance may be degraded",
 			metadataColl.Name())
 	}
 
@@ -124,7 +124,7 @@ func ensureJobsIndexes(ctx context.Context, metadataColl, logsColl *mongo.Collec
 		return false, err
 	}
 	if !logsOK {
-		log.Printf("jobby: collection %q is missing one or more expected indexes (see mongo-init); performance may be degraded",
+		log.Printf("jobby: collection %q is missing one or more expected indexes (make sure the migrations are applied); performance may be degraded",
 			logsColl.Name())
 	}
 

@@ -1,0 +1,245 @@
+[
+  {
+    "create": "job_metadata",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "jobId",
+          "name",
+          "status",
+          "createdAt"
+        ],
+        "properties": {
+          "jobId": {
+            "bsonType": "string",
+            "description": "Unique job identifier (UUID) - REQUIRED",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "name": {
+            "bsonType": "string",
+            "description": "Job type name - REQUIRED",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "description": "Current job execution status - REQUIRED"
+          },
+          "priority": {
+            "bsonType": "int",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Job priority (0=lowest, 10=highest, default=5)"
+          },
+          "createdAt": {
+            "bsonType": "date",
+            "description": "Job creation timestamp - REQUIRED"
+          },
+          "startedAt": {
+            "bsonType": [
+              "date",
+              "null"
+            ],
+            "description": "Job start timestamp (null if not started)"
+          },
+          "completedAt": {
+            "bsonType": [
+              "date",
+              "null"
+            ],
+            "description": "Job completion timestamp (null if not completed)"
+          },
+          "payload": {
+            "bsonType": "object",
+            "description": "Job-specific data with dynamic schema"
+          },
+          "metadata": {
+            "bsonType": "object",
+            "description": "Additional metadata fields (key-value pairs)"
+          },
+          "error": {
+            "bsonType": [
+              "string",
+              "null"
+            ],
+            "description": "Error message if job failed (null if successful)"
+          },
+          "retryCount": {
+            "bsonType": "int",
+            "minimum": 0,
+            "description": "Number of retry attempts (default=0)"
+          },
+          "tags": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "string"
+            },
+            "uniqueItems": true,
+            "description": "Job tags for filtering and categorization"
+          }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "createIndexes": "job_metadata",
+    "indexes": [
+      {
+        "key": {
+          "jobId": 1
+        },
+        "name": "idx_jobId_unique",
+        "unique": true
+      },
+      {
+        "key": {
+          "name": 1
+        },
+        "name": "idx_name"
+      },
+      {
+        "key": {
+          "status": 1
+        },
+        "name": "idx_status"
+      },
+      {
+        "key": {
+          "createdAt": -1
+        },
+        "name": "idx_createdAt_desc"
+      },
+      {
+        "key": {
+          "tags": 1
+        },
+        "name": "idx_tags"
+      },
+      {
+        "key": {
+          "name": 1,
+          "status": 1
+        },
+        "name": "idx_name_status"
+      },
+      {
+        "key": {
+          "status": 1,
+          "priority": -1,
+          "createdAt": 1
+        },
+        "name": "idx_status_priority_created"
+      }
+    ]
+  },
+  {
+    "create": "job_logs",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "jobId",
+          "timestamp",
+          "level",
+          "message"
+        ],
+        "properties": {
+          "jobId": {
+            "bsonType": "string",
+            "description": "Associated job ID (links to job_metadata) - REQUIRED",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "timestamp": {
+            "bsonType": "date",
+            "description": "Log entry timestamp - REQUIRED"
+          },
+          "level": {
+            "enum": [
+              "debug",
+              "info",
+              "warn",
+              "error",
+              "fatal"
+            ],
+            "description": "Log severity level - REQUIRED"
+          },
+          "message": {
+            "bsonType": "string",
+            "description": "Log message text - REQUIRED",
+            "minLength": 1,
+            "maxLength": 10000
+          },
+          "context": {
+            "bsonType": "object",
+            "description": "Additional context data (structured logging)"
+          },
+          "source": {
+            "bsonType": "string",
+            "description": "Source of the log entry (e.g., \"executor\", \"handler\")",
+            "maxLength": 100
+          },
+          "stackTrace": {
+            "bsonType": [
+              "string",
+              "null"
+            ],
+            "description": "Stack trace for error logs (null for non-errors)"
+          }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "createIndexes": "job_logs",
+    "indexes": [
+      {
+        "key": {
+          "jobId": 1,
+          "timestamp": -1
+        },
+        "name": "idx_jobId_timestamp_desc"
+      },
+      {
+        "key": {
+          "timestamp": -1
+        },
+        "name": "idx_timestamp_desc"
+      },
+      {
+        "key": {
+          "level": 1
+        },
+        "name": "idx_level"
+      },
+      {
+        "key": {
+          "jobId": 1,
+          "level": 1,
+          "timestamp": -1
+        },
+        "name": "idx_jobId_level_timestamp"
+      }
+    ]
+  },
+  {
+    "createUser": "jobby_app",
+    "pwd": "jobby_app_pass",
+    "roles": [
+      {
+        "role": "readWrite",
+        "db": "jobby"
+      }
+    ]
+  }
+]

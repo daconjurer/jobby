@@ -9,7 +9,8 @@ services:
       MONGO_INITDB_DATABASE: jobby
     volumes:
       - mongodb_data:/data/db
-      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+      # Phase 2: remove mongo-init; schema is applied via cmd/migrate (migrations/).
+      # - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s

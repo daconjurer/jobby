@@ -18,6 +18,9 @@ creates the application user, the `jobby` database, `job_metadata` and `job_logs
 validation), and the named indexes that `OpenMongoJobs` / `NewMongoJobsReaderWriter` verify at
 startup.
 
+You can recreate the same schema without relying on **`mongo-init.js`** (for example before Phase 2
+removes it from Compose) using **`cmd/migrate`** — see **[migrations/README.md](../../migrations/README.md)**.
+
 ```sh
 task mongo-up
 ```
