@@ -1,0 +1,184 @@
+# https://taskfile.dev/
+version: "3"
+
+vars:
+  INTEGRATION_TEST_FLAGS: -tags=integration -p 1 -parallel 1 -count=1
+  COVERMODE: atomic
+  COVERAGE_OUT: coverage.out
+  COVERAGE_UNIT_OUT: coverage-unit.out
+  COVERAGE_INTEGRATION_OUT: coverage-integration.out
+  COVERAGE_ALL_OUT: coverage-all.out
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  # --- Build ---
+  build:
+    desc: go build ./...
+    cmds:
+      - go build ./...
+
+  build-jobs-server:
+    desc: Build cmd/jobs-server into bin/jobs-server
+    cmds:
+      - go build -o bin/jobs-server ./cmd/jobs-server
+
+  build-jobs-cli:
+    desc: Build cmd/jobs-cli into bin/jobs-cli
+    cmds:
+      - go build -o bin/jobs-cli ./cmd/jobs-cli
+
+  format-check:
+    desc: Verify gofmt cleanliness (non-write)
+    cmds:
+      - ./scripts/format-check.sh
+
+  format:
+    desc: Apply go fmt ./...
+    cmds:
+      - go fmt ./...
+
+  lint-check:
+    desc: golangci-lint without --fix (CI-safe)
+    cmds:
+      - golangci-lint run --fix=false ./...
+
+  lint:
+    desc: golangci-lint with default fix behavior
+    cmds:
+      - golangci-lint run ./...
+
+  # --- Run binaries (aligned with cmd/ layout) ----------------------------------------
+  run-jobs-server:
+    desc: Run cmd/jobs-server with go run
+    cmds:
+      - go run ./cmd/jobs-server
+
+  run-jobs-cli:
+    desc: Run cmd/jobs-cli with go run
+    cmds:
+      - go run ./cmd/jobs-cli
+
+  run:
+    desc: Shortcut for task run-jobs-server
+    cmds:
+      - task: run-jobs-server
+
+  # --- Tests ---
+  test:
+    desc: Unit tests only (no integration tag)
+    cmds:
+      - go test ./...
+
+  test-integration:
+    desc: Integration tests (-tags=integration); needs MongoDB and MONGODB_URI (see docs)
+    cmds:
+      - go test {{ .INTEGRATION_TEST_FLAGS }} -v ./...
+
+  test-verbose:
+    cmds:
+      - go test -v ./...
+
+  test-coverage:
+    cmds:
+      - go test -cover ./...
+
+  coverage:
+    desc: Generate unit-test coverage report
+    cmds:
+      - echo "Generating unit-test coverage report..."
+      - go test -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_OUT }} ./...
+      - go tool cover -func={{ .COVERAGE_OUT }}
+      - echo ""
+      - echo "Run 'task coverage-html' for unit coverage in the browser"
+
+  coverage-html:
+    cmds:
+      - echo "Generating unit-test coverage report..."
+      - go test -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_OUT }} ./...
+      - go tool cover -html={{ .COVERAGE_OUT }}
+
+  coverage-integration:
+    desc: Integration coverage (-tags=integration); needs MongoDB
+    cmds:
+      - echo "Generating integration-test coverage ({{ .COVERAGE_INTEGRATION_OUT }})..."
+      - go test {{ .INTEGRATION_TEST_FLAGS }} -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_INTEGRATION_OUT }} ./...
+      - go tool cover -func={{ .COVERAGE_INTEGRATION_OUT }}
+      - echo ""
+      - echo "Run 'task coverage-integration-html' to open this profile in the browser"
+
+  coverage-integration-html:
+    cmds:
+      - echo "Generating integration-test coverage ({{ .COVERAGE_INTEGRATION_OUT }})..."
+      - go test {{ .INTEGRATION_TEST_FLAGS }} -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_INTEGRATION_OUT }} ./...
+      - go tool cover -html={{ .COVERAGE_INTEGRATION_OUT }}
+
+  coverage-all:
+    desc: Merge unit + integration coverage (MongoDB required for integration part)
+    cmds:
+      - echo "Generating merged unit + integration coverage ({{ .COVERAGE_ALL_OUT }})..."
+      - go test -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_UNIT_OUT }} ./...
+      - go test {{ .INTEGRATION_TEST_FLAGS }} -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_INTEGRATION_OUT }} ./...
+      - "{ echo \"mode: {{ .COVERMODE }}\"; grep -h -v \"^mode:\" {{ .COVERAGE_UNIT_OUT }} {{ .COVERAGE_INTEGRATION_OUT }}; } > {{ .COVERAGE_ALL_OUT }}"
+      - go tool cover -func={{ .COVERAGE_ALL_OUT }}
+      - echo ""
+      - echo "Run 'task coverage-all-html' to open the merged report in the browser"
+
+  coverage-all-html:
+    cmds:
+      - echo "Generating merged unit + integration coverage ({{ .COVERAGE_ALL_OUT }})..."
+      - go test -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_UNIT_OUT }} ./...
+      - go test {{ .INTEGRATION_TEST_FLAGS }} -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_INTEGRATION_OUT }} ./...
+      - "{ echo \"mode: {{ .COVERMODE }}\"; grep -h -v \"^mode:\" {{ .COVERAGE_UNIT_OUT }} {{ .COVERAGE_INTEGRATION_OUT }}; } > {{ .COVERAGE_ALL_OUT }}"
+      - go tool cover -html={{ .COVERAGE_ALL_OUT }}
+
+  clean-coverage:
+    cmds:
+      - rm -f {{ .COVERAGE_OUT }} {{ .COVERAGE_UNIT_OUT }} {{ .COVERAGE_INTEGRATION_OUT }} {{ .COVERAGE_ALL_OUT }}
+
+  # --- Docker Compose ---
+  docker-up:
+    cmds:
+      - docker compose up -d
+
+  docker-down:
+    cmds:
+      - docker compose down
+
+  docker-clean:
+    cmds:
+      - docker compose down -v
+
+  docker-logs:
+    cmds:
+      - docker compose logs -f
+
+  mongo-up:
+    cmds:
+      - docker compose up -d mongodb
+
+  mongo-down:
+    cmds:
+      - docker compose down mongodb
+
+  mongo-logs:
+    cmds:
+      - docker compose logs -f mongodb
+
+  mongo-shell:
+    cmds:
+      - docker compose exec mongodb mongosh -u jobby_app -p jobby_app_pass jobby
+
+  mongo-reset:
+    cmds:
+      - docker compose down mongodb -v
+      - docker compose up -d mongodb
+
+  # --- Dev -----------------------------------------------------------------------------
+  dev:
+    desc: Hot reload via air (.air.toml)
+    cmds:
+      - go tool air

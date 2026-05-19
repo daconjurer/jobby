@@ -12,16 +12,24 @@ Application settings are read from the process environment with [`internal/confi
 
 ## Quick Start
 
+Install [Task](https://taskfile.dev/installation/) so you can run automation from [`Taskfile.yml`](./Taskfile.yml).
+
 ```bash
-# Run tests
-make test
+# Run unit tests
+task test
 
 # Start MongoDB
-make mongo-up
+task mongo-up
 
-# Run application
-make run
+# Run HTTP server from cmd/jobs-server
+task run-jobs-server
+# or shorthand
+task run
 ```
+
+## CI
+
+Pull requests and pushes to **`main`** run GitHub Actions (format + lint via Task in **`dockerpaps/golang-for-ci:latest`**). Configure repository secrets **`DOCKER_USERNAME`** and **`DOCKER_PASSWORD`** and a GitHub Actions environment named **`base`** (see [docs/dev/ci.md](docs/dev/ci.md)).
 
 ## Documentation
 
