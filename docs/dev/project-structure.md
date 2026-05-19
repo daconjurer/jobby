@@ -6,7 +6,8 @@ and the [Organizing a Go module](https://go.dev/doc/modules/layout) documentatio
 
 The applications of the project are defined in `cmd/`. For example:
 
-- **`cmd/jobs-cli`** — minimal CLI that connects to MongoDB using `internal/jobs/metadata` (`OpenMongoJobs`).
+- **`cmd/jobs-server`** — HTTP server for jobs metadata (runs with **`task run-jobs-server`** or **`task run`**).
+- **`cmd/jobs-cli`** — minimal CLI that connects to MongoDB using `internal/jobs/metadata` (`OpenMongoJobs`); **`task run-jobs-cli`** for **`go run`**.
 
 **`internal/`**
 

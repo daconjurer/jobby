@@ -1,13 +1,13 @@
 Dev setup
 ==========
 
-The whole setup uses [make](https://www.gnu.org/software/make/) so *make* (lol) sure you have
-it installed. This is the main [Makefile](../../Makefile), so checkout the targets there.
+Local automation uses **[Task](https://taskfile.dev/installation/)** (`go install`-able or distro packages — see upstream docs).
+Tasks are declared in **[Taskfile.yml](../../Taskfile.yml)** at repo root (`task --list` to discover names).
 
 Then get started with:
 
 ```sh
-make build
+task build
 ```
 
 The [compose.yml](../../compose.yml) file defines the **docker compose** stack used for development
@@ -19,12 +19,12 @@ validation), and the named indexes that `OpenMongoJobs` / `NewMongoJobsReaderWri
 startup.
 
 ```sh
-make mongo-up
+task mongo-up
 ```
 
 Copy [**.env.example**](../../.env.example) to **`.env`** and adjust for how you run the apps.
 The Go toolchain does not load **`.env`** for you—export those variables into your shell (or use your
-preferred loader) before running **`cmd/jobs-server`**, **`cmd/jobs-cli`**, or **`make test-integration`**.
+preferred loader) before running **`cmd/jobs-server`**, **`cmd/jobs-cli`**, or **`task test-integration`**.
 Variables there mirror what **`cmd/jobs-server`** and **`cmd/jobs-cli`** expect: **`MONGODB_URI`**
 uses **`localhost`** and the **composed host port** when binaries run on your machine; the
 commented alternate **`MONGODB_URI`** in `.env.example` matches in-cluster access (**`mongodb`** as
@@ -36,12 +36,16 @@ Database name and collection names align with what **`mongo-init.js`** creates f
 - **`MONGODB_*`** (and **`APP_PORT`** for the HTTP server) — required by **`cmd/jobs-server`** and
   **`cmd/jobs-cli`** unless you rely on defaults for timeout and pool size; see [**.env.example**](../../.env.example).
 - **`MONGODB_URI`** — also **required** by **`internal/jobs/metadata`** integration tests
-  (`make test-integration`); use the same value as for local binaries (from `.env` / your shell).
+  (`task test-integration`); use the same value as for local binaries (from `.env` / your shell).
 
 # Tests
 
-- **`make test`** — `go test ./...` (unit tests; no integration tag).
-- **`make test-integration`** — runs tests with `-tags=integration` (see [scripts/make/tests.mk](../../scripts/make/tests.mk)); requires MongoDB (e.g. `make mongo-up`) **and** **`MONGODB_URI`** set in the environment (see [**.env.example**](../../.env.example)).
+- **`task test`** — `go test ./...` (unit tests; no integration tag).
+- **`task test-integration`** — runs tests with `-tags=integration` (see [Taskfile.yml](../../Taskfile.yml)); requires MongoDB (e.g. `task mongo-up`) **and** **`MONGODB_URI`** set in the environment (see [**.env.example**](../../.env.example)).
+
+# CI
+
+See **[ci.md](./ci.md)** for GitHub Actions prerequisites (Docker Hub secrets, **`base`** environment).
 
 # Project structure
 

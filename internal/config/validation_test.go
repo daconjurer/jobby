@@ -129,4 +129,3 @@ func TestLoadIntoWithOptions_NilDestination(t *testing.T) {
 		t.Fatalf("got %v want ErrNilDestination", err)
 	}
 }
-
