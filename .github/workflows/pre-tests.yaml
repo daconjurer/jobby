@@ -13,6 +13,10 @@ jobs:
     name: Preliminary checks
     runs-on: ubuntu-latest
     environment: base
+    # `go list`/`gofmt` chains can trigger VCS stamping; inside container actions `.git`
+    # on the mounted workspace sometimes causes `git exit 128` (ownership / stamping).
+    env:
+      GOFLAGS: "-buildvcs=false"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

@@ -11,6 +11,12 @@ Runs on **`pull_request`** and **`push`** to **`main`**:
 2. **`docker/login-action`** — logs into Docker Hub so pulls of **`dockerpaps/golang-for-ci:latest`** are less likely to hit anonymous rate limits
 3. Composite action **[`.github/actions/pre-test/`](../../.github/actions/pre-test)** runs **`task format-check`** and **`task lint-check`** inside the CI container (Go, Task, and **`golangci-lint`** are provided by that image).
 
+### Go / Docker note
+
+Container actions bind-mount the checkout; **`go list`** (used indirectly by **`gofmt`/`task format-check`**) can fail with **`error obtaining VCS status: exit status 128`** when git refuses to touch that tree (ownership) or stamping is brittle in CI.
+
+The **`pre-tests`** job sets **`GOFLAGS=-buildvcs=false`**, and **[`run.sh`](../../.github/actions/pre-test/run.sh)** marks **`$GITHUB_WORKSPACE`** as **`safe.directory`** for git — those are toolchain mitigations, not missing module dependencies (the **`go: downloading`** lines are normal proxy/module fetches).
+
 ## Repository configuration
 
 Configure the following in GitHub (**Settings → Secrets and variables → Actions**):
