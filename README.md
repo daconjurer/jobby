@@ -18,7 +18,7 @@ Install [Task](https://taskfile.dev/installation/) so you can run automation fro
 # Run unit tests
 task test
 
-# Start MongoDB
+# Start MongoDB and apply schema migrations
 task mongo-up
 
 # Run HTTP server from cmd/jobs-server

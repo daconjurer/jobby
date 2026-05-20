@@ -11,28 +11,27 @@ task build
 ```
 
 The [compose.yml](../../compose.yml) file defines the **docker compose** stack used for development
-and integration testing. The **`mongodb`** service maps container port **27017** to host port **27018**
-(`ports: "27018:27017"`), wires in [scripts/mongo-init.js](../../scripts/mongo-init.js) on first start,
-and uses **`MONGO_INITDB_DATABASE: jobby`** plus root credentials for bootstrap. That init script
-creates the application user, the `jobby` database, `job_metadata` and `job_logs` collections (with
-validation), and the named indexes that `OpenMongoJobs` / `NewMongoJobsReaderWriter` verify at
-startup.
-
-You can recreate the same schema without relying on **`mongo-init.js`** (for example before Phase 2
-removes it from Compose) using **`cmd/migrate`** — see **[migrations/README.md](../../migrations/README.md)**.
+and integration testing. Services share the explicit Docker network **`jobby`** (`networks.jobby.name`).
+The **`mongodb`** service maps container port **27017** to host port **27018**
+(`ports: "27018:27017"`) and uses **`MONGO_INITDB_DATABASE: jobby`** plus root credentials for bootstrap.
+The **`migrate`** service waits for MongoDB to be healthy, applies schema from
+**[migrations/](../../migrations/)** via **`cmd/migrate`**, then exits. That creates the application user,
+`job_metadata` and `job_logs` collections (with validation), and the named indexes that
+`OpenMongoJobs` / `NewMongoJobsReaderWriter` verify at startup. See
+**[migrations/README.md](../../migrations/README.md)** for manual runs and adding migrations.
 
 ```sh
-task mongo-up
+task mongo-up   # starts mongodb and runs migrate once
 ```
 
-Copy [**.env.example**](../../.env.example) to **`.env`** and adjust for how you run the apps.
-The Go toolchain does not load **`.env`** for you—export those variables into your shell (or use your
-preferred loader) before running **`cmd/jobs-server`**, **`cmd/jobs-cli`**, or **`task test-integration`**.
-Variables there mirror what **`cmd/jobs-server`** and **`cmd/jobs-cli`** expect: **`MONGODB_URI`**
-uses **`localhost`** and the **composed host port** when binaries run on your machine; the
-commented alternate **`MONGODB_URI`** in `.env.example` matches in-cluster access (**`mongodb`** as
-hostname, **27017**) consistent with the service name and internal port in [compose.yml](../../compose.yml).
-Database name and collection names align with what **`mongo-init.js`** creates for that stack.
+If migrate fails with **`network … not found`**, an old **migrate** container is still bound to a removed Compose network (common after `docker network prune` or recreating only **mongodb**). Remove it and retry: `docker compose rm -f migrate && task mongo-up`. **`task mongo-up`** recreates **migrate** each run to avoid this.
+
+Copy [**.env.example**](../../.env.example) to **`.env`** before **`docker compose`** so **`COMPOSE_MONGODB_URI`** is available to the **`migrate`** service (admin URI, hostname **`mongodb`**, port **27017**). Compose loads **`.env`** automatically; the Go toolchain does not load it for **`go run`** — export variables into your shell (or use your preferred loader) before running **`cmd/jobs-server`**, **`cmd/jobs-cli`**, or **`task test-integration`**.
+
+- **`COMPOSE_MONGODB_URI`** — used only by the **`migrate`** service in [compose.yml](../../compose.yml).
+- **`MONGODB_URI`** — used by apps and integration tests on the host; use **`localhost`** and published port **27018** (see `.env.example`).
+
+Database name and collection names align with what **`migrations/001_initialize_database`** creates for that stack.
 
 # MongoDB and jobs metadata
 

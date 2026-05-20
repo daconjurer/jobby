@@ -27,17 +27,23 @@ Other commands:
 
 Tracking collections (created by golang-migrate) include **`schema_migrations`** (version state) and, by default, **`migrate_advisory_lock`**.
 
-## Compose + `mongo-init.js` caveat
+## Docker Compose
 
-Docker Compose currently mounts **`scripts/mongo-init.js`**, which creates the same schema on **first container start**. If **`mongo-init` has already run**, **`migrate up`** will fail creating collections that already exist.
+The **`migrate`** service in [compose.yml](../compose.yml) runs after MongoDB is healthy, applies pending migrations once, and exits (`restart: "no"`). It reads **`COMPOSE_MONGODB_URI`** from your **`.env`** (see [`.env.example`](../.env.example)) as **`MONGO_URI`** — use an admin-privileged URI with hostname **`mongodb`** and port **27017**.
 
-To exercise migrations alone on a blank database:
+```bash
+cp .env.example .env   # if you have not already
+docker compose down -v   # fresh volume
+docker compose up -d     # mongodb → migrate → done
+docker compose logs migrate
+```
 
-1. Start MongoDB **without** the init script volume (temporary change to `compose.yml`), or  
-2. Use a **fresh volume** (`docker compose down -v`) **and** an image/start path that skips `mongo-init`, or  
-3. Use a disposable `docker run mongo:…` container with only **`MONGO_INITDB_ROOT_USERNAME` / PASSWORD`** (no `/docker-entrypoint-initdb.d` script).
+Build the migration image locally:
 
-Phase 2 will remove `mongo-init` from Compose and rely on this binary.
+```bash
+docker build -f Dockerfile.migrate -t jobby-migrate .
+docker run --rm -e MONGO_URI='mongodb://jobby_admin:jobby_admin_pass@host.docker.internal:27018/jobby?authSource=admin' jobby-migrate version
+```
 
 ## Adding a new migration
 

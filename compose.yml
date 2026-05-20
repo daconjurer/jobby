@@ -1,4 +1,19 @@
 services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    image: jobby-migrate
+    environment:
+      MONGO_URI: ${COMPOSE_MONGODB_URI}
+      MIGRATIONS_PATH: /app/migrations
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - jobby
+
   mongodb:
     image: mongo:8.0
     ports:
@@ -9,14 +24,18 @@ services:
       MONGO_INITDB_DATABASE: jobby
     volumes:
       - mongodb_data:/data/db
-      # Phase 2: remove mongo-init; schema is applied via cmd/migrate (migrations/).
-      # - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - jobby
+
+networks:
+  jobby:
+    name: jobby
 
 volumes:
   mongodb_data:
