@@ -1,4 +1,19 @@
 services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    image: jobby-migrate
+    environment:
+      MONGO_URI: ${COMPOSE_MONGODB_URI}
+      MIGRATIONS_PATH: /app/migrations
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - jobby
+
   mongodb:
     image: mongo:8.0
     ports:
@@ -9,13 +24,49 @@ services:
       MONGO_INITDB_DATABASE: jobby
     volumes:
       - mongodb_data:/data/db
-      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - jobby
+
+  jobs-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.jobs-server
+    image: jobby-jobs-server
+    ports:
+      - "3001:3001"
+    environment:
+      APP_PORT: "3001"
+      MONGODB_URI: mongodb://jobby_app:jobby_app_pass@mongodb:27017/jobby?authSource=jobby
+      MONGODB_DATABASE: jobby
+      MONGODB_COLLECTION_METADATA: job_metadata
+      MONGODB_COLLECTION_LOGS: job_logs
+      MONGODB_TIMEOUT: 10s
+      MONGODB_MAX_POOL_SIZE: "100"
+      MONGODB_MIN_POOL_SIZE: "10"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - jobby
+
+networks:
+  jobby:
+    name: jobby
 
 volumes:
   mongodb_data:

@@ -122,7 +122,7 @@ tasks:
       - echo "Generating merged unit + integration coverage ({{ .COVERAGE_ALL_OUT }})..."
       - go test -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_UNIT_OUT }} ./...
       - go test {{ .INTEGRATION_TEST_FLAGS }} -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_INTEGRATION_OUT }} ./...
-      - "{ echo \"mode: {{ .COVERMODE }}\"; grep -h -v \"^mode:\" {{ .COVERAGE_UNIT_OUT }} {{ .COVERAGE_INTEGRATION_OUT }}; } > {{ .COVERAGE_ALL_OUT }}"
+      - '{ echo "mode: {{ .COVERMODE }}"; grep -h -v "^mode:" {{ .COVERAGE_UNIT_OUT }} {{ .COVERAGE_INTEGRATION_OUT }}; } > {{ .COVERAGE_ALL_OUT }}'
       - go tool cover -func={{ .COVERAGE_ALL_OUT }}
       - echo ""
       - echo "Run 'task coverage-all-html' to open the merged report in the browser"
@@ -132,7 +132,7 @@ tasks:
       - echo "Generating merged unit + integration coverage ({{ .COVERAGE_ALL_OUT }})..."
       - go test -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_UNIT_OUT }} ./...
       - go test {{ .INTEGRATION_TEST_FLAGS }} -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_INTEGRATION_OUT }} ./...
-      - "{ echo \"mode: {{ .COVERMODE }}\"; grep -h -v \"^mode:\" {{ .COVERAGE_UNIT_OUT }} {{ .COVERAGE_INTEGRATION_OUT }}; } > {{ .COVERAGE_ALL_OUT }}"
+      - '{ echo "mode: {{ .COVERMODE }}"; grep -h -v "^mode:" {{ .COVERAGE_UNIT_OUT }} {{ .COVERAGE_INTEGRATION_OUT }}; } > {{ .COVERAGE_ALL_OUT }}'
       - go tool cover -html={{ .COVERAGE_ALL_OUT }}
 
   clean-coverage:
@@ -141,6 +141,7 @@ tasks:
 
   # --- Docker Compose ---
   docker-up:
+    desc: Start full stack (mongodb, migrate, jobs-server)
     cmds:
       - docker compose up -d
 
@@ -156,9 +157,31 @@ tasks:
     cmds:
       - docker compose logs -f
 
+  migrate-build:
+    desc: Build the jobby-migrate Docker image
+    cmds:
+      - docker build -f Dockerfile.migrate -t jobby-migrate .
+
+  jobs-server-build:
+    desc: Build the jobby-jobs-server Docker image
+    cmds:
+      - docker build -f Dockerfile.jobs-server -t jobby-jobs-server .
+
+  jobs-server-logs:
+    desc: Follow jobs-server container logs
+    cmds:
+      - docker compose logs -f jobs-server
+
+  migrate-up:
+    desc: Run schema migrations (requires healthy mongodb)
+    cmds:
+      - docker compose up migrate
+
   mongo-up:
+    desc: Start MongoDB and run migrate once
     cmds:
       - docker compose up -d mongodb
+      - docker compose up -d migrate
 
   mongo-down:
     cmds:

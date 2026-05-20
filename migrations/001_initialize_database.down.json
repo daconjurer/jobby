@@ -1,0 +1,11 @@
+[
+  {
+    "drop": "job_logs"
+  },
+  {
+    "drop": "job_metadata"
+  },
+  {
+    "dropUser": "jobby_app"
+  }
+]
