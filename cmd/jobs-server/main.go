@@ -32,7 +32,7 @@ func main() {
 
 	log.Println("Connected to MongoDB (jobby database)")
 	if !reader.IndexesPresent {
-		log.Println("warning: one or more expected indexes are missing (run `go run ./cmd/migrate up` — see migrations/README.md)")
+		log.Println("warning: one or more expected indexes are missing (make sure the migrations are applied)")
 	}
 
 	metadataSvc := service.NewMetadataService(reader, writer)

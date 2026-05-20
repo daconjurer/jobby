@@ -18,40 +18,135 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/mongodb"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/spf13/cobra"
 )
 
 func main() {
 	log.SetPrefix("migrate: ")
 	log.SetFlags(0)
 
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: migrate <up|down|version|force> [args]")
-		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "environment:")
-		fmt.Fprintln(os.Stderr, "  MONGO_URI           required MongoDB URI (dbname path should be jobby)")
-		fmt.Fprintln(os.Stderr, "  MIGRATIONS_PATH     migrations directory (default ./migrations)")
-		os.Exit(2)
+	if err := newRootCmd().Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func newRootCmd() *cobra.Command {
+	root := &cobra.Command{
+		Use:   "migrate",
+		Short: "Apply MongoDB schema migrations",
+		Long: `Applies MongoDB schema migrations via golang-migrate (JSON runCommand migrations).
+
+Requires MONGO_URI (admin-privileged URI; database segment should be jobby).
+Optional MIGRATIONS_PATH (defaults to ./migrations).`,
 	}
 
-	mongoURI := os.Getenv("MONGO_URI")
-	if mongoURI == "" {
-		log.Fatal("MONGO_URI environment variable is required")
-	}
+	root.AddCommand(
+		newUpCmd(),
+		newDownCmd(),
+		newVersionCmd(),
+		newForceCmd(),
+	)
 
-	migDir := os.Getenv("MIGRATIONS_PATH")
-	if migDir == "" {
-		migDir = "./migrations"
+	return root
+}
+
+func newUpCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "up",
+		Short: "Apply all pending migrations",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return withMigrate(func(mig *migrate.Migrate) error {
+				if err := mig.Up(); err != nil {
+					if errors.Is(err, migrate.ErrNoChange) {
+						log.Println("no change (already up to date)")
+						return nil
+					}
+					return fmt.Errorf("up: %w", err)
+				}
+				return nil
+			})
+		},
 	}
-	absRoot, err := filepath.Abs(filepath.Clean(migDir))
+}
+
+func newDownCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "down",
+		Short: "Roll back one migration step",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return withMigrate(func(mig *migrate.Migrate) error {
+				if err := mig.Steps(-1); err != nil {
+					if errors.Is(err, migrate.ErrNoChange) {
+						log.Println("no change (nothing to roll back)")
+						return nil
+					}
+					return fmt.Errorf("down: %w", err)
+				}
+				return nil
+			})
+		},
+	}
+}
+
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the current migration version",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return withMigrate(func(mig *migrate.Migrate) error {
+				v, dirty, err := mig.Version()
+				if err != nil {
+					if errors.Is(err, migrate.ErrNilVersion) {
+						log.Println("version: none (fresh database)")
+						return nil
+					}
+					return fmt.Errorf("version: %w", err)
+				}
+				state := ""
+				if dirty {
+					state = " (dirty)"
+				}
+				log.Printf("version: %d%s", v, state)
+				return nil
+			})
+		},
+	}
+}
+
+func newForceCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "force <version>",
+		Short: "Set migration version manually (recovery only)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			v, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("force: invalid version: %w", err)
+			}
+			return withMigrate(func(mig *migrate.Migrate) error {
+				if err := mig.Force(v); err != nil {
+					return fmt.Errorf("force: %w", err)
+				}
+				return nil
+			})
+		},
+	}
+}
+
+func withMigrate(fn func(mig *migrate.Migrate) error) error {
+	cfg, err := loadMigrateConfig()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	srcURL := migrationsSourceURL(absRoot)
-
-	mig, err := migrate.New(srcURL, mongoURI)
+	absRoot, err := filepath.Abs(filepath.Clean(cfg.MigrationsPath))
 	if err != nil {
-		log.Fatalf("init migrations: %v", err)
+		return err
+	}
+
+	mig, err := migrate.New(migrationsSourceURL(absRoot), cfg.URI)
+	if err != nil {
+		return fmt.Errorf("init migrations: %w", err)
 	}
 	defer func() {
 		srcErr, dbErr := mig.Close()
@@ -63,52 +158,7 @@ func main() {
 		}
 	}()
 
-	switch os.Args[1] {
-	case "up":
-		if err := mig.Up(); err != nil {
-			if errors.Is(err, migrate.ErrNoChange) {
-				log.Println("no change (already up to date)")
-				return
-			}
-			log.Fatalf("up: %v", err)
-		}
-	case "down":
-		if err := mig.Steps(-1); err != nil {
-			if errors.Is(err, migrate.ErrNoChange) {
-				log.Println("no change (nothing to roll back)")
-				return
-			}
-			log.Fatalf("down: %v", err)
-		}
-	case "version":
-		v, dirty, err := mig.Version()
-		if err != nil {
-			if errors.Is(err, migrate.ErrNilVersion) {
-				log.Println("version: none (fresh database)")
-				return
-			}
-			log.Fatalf("version: %v", err)
-		}
-		state := ""
-		if dirty {
-			state = " (dirty)"
-		}
-		log.Printf("version: %d%s", v, state)
-	case "force":
-		if len(os.Args) != 3 {
-			log.Fatal("usage: migrate force <version>")
-		}
-		v, err := strconv.Atoi(os.Args[2])
-		if err != nil {
-			log.Fatalf("force: invalid version: %v", err)
-		}
-		if err := mig.Force(v); err != nil {
-			log.Fatalf("force: %v", err)
-		}
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
-		os.Exit(2)
-	}
+	return fn(mig)
 }
 
 // migrationsSourceURL builds a file:// URL for golang-migrate's file source driver.

@@ -34,6 +34,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/gohugoio/hugo v0.149.1 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.17.6 // indirect
@@ -50,6 +51,8 @@ require (
 	github.com/quic-go/quic-go v0.59.0 // indirect
 	github.com/spf13/afero v1.14.0 // indirect
 	github.com/spf13/cast v1.9.2 // indirect
+	github.com/spf13/cobra v1.10.2 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/tdewolff/parse/v2 v2.8.3 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect

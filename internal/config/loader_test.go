@@ -167,3 +167,57 @@ func TestLoadInto_NilDestination(t *testing.T) {
 		t.Fatalf("got %v want ErrNilDestination", err)
 	}
 }
+
+var migrateEnvKeys = []string{"MONGO_URI", "MIGRATIONS_PATH"}
+
+func TestLoadInto_Migrate_HappyPath(t *testing.T) {
+	temporaryUnsetEnv(t, migrateEnvKeys...)
+	const wantURI = "mongodb://admin@localhost/jobby"
+	const wantPath = "./migrations"
+	t.Setenv("MONGO_URI", wantURI)
+	t.Setenv("MIGRATIONS_PATH", wantPath)
+
+	var cfg MigrateConfig
+	if err := LoadInto(&cfg); err != nil {
+		t.Fatalf("LoadInto: %v", err)
+	}
+	if cfg.URI != wantURI || cfg.MigrationsPath != wantPath {
+		t.Fatalf("unexpected migrate config: %+v", cfg)
+	}
+}
+
+func TestLoadInto_Migrate_DefaultMigrationsPath(t *testing.T) {
+	temporaryUnsetEnv(t, migrateEnvKeys...)
+	t.Setenv("MONGO_URI", "mongodb://admin@localhost/jobby")
+
+	var cfg MigrateConfig
+	if err := LoadInto(&cfg); err != nil {
+		t.Fatalf("LoadInto: %v", err)
+	}
+	if cfg.MigrationsPath != "./migrations" {
+		t.Fatalf("MigrationsPath default: got %q want ./migrations", cfg.MigrationsPath)
+	}
+}
+
+func TestLoadInto_Migrate_MissingURI(t *testing.T) {
+	temporaryUnsetEnv(t, migrateEnvKeys...)
+
+	var cfg MigrateConfig
+	err := LoadInto(&cfg)
+	if err == nil {
+		t.Fatal("expected error when MONGO_URI is missing")
+	}
+	t.Log(err)
+}
+
+func TestLoadInto_Migrate_EmptyURI(t *testing.T) {
+	temporaryUnsetEnv(t, migrateEnvKeys...)
+	t.Setenv("MONGO_URI", "")
+
+	var cfg MigrateConfig
+	err := LoadInto(&cfg)
+	if err == nil {
+		t.Fatal("expected error when MONGO_URI is empty")
+	}
+	t.Log(err)
+}

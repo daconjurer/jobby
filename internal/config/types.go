@@ -7,6 +7,12 @@ type ServerConfig struct {
 	Port string `env:"APP_PORT,required,notEmpty"`
 }
 
+// MigrateConfig holds settings for the cmd/migrate binary (golang-migrate runner).
+type MigrateConfig struct {
+	URI            string `env:"MONGO_URI,required,notEmpty"`
+	MigrationsPath string `env:"MIGRATIONS_PATH" envDefault:"./migrations"`
+}
+
 // MongoConfig holds MongoDB connection and pool settings loaded from environment variables.
 type MongoConfig struct {
 	URI                string        `env:"MONGODB_URI,required,notEmpty"`
