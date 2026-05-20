@@ -141,6 +141,7 @@ tasks:
 
   # --- Docker Compose ---
   docker-up:
+    desc: Start full stack (mongodb, migrate, jobs-server)
     cmds:
       - docker compose up -d
 
@@ -160,6 +161,16 @@ tasks:
     desc: Build the jobby-migrate Docker image
     cmds:
       - docker build -f Dockerfile.migrate -t jobby-migrate .
+
+  jobs-server-build:
+    desc: Build the jobby-jobs-server Docker image
+    cmds:
+      - docker build -f Dockerfile.jobs-server -t jobby-jobs-server .
+
+  jobs-server-logs:
+    desc: Follow jobs-server container logs
+    cmds:
+      - docker compose logs -f jobs-server
 
   migrate-up:
     desc: Run schema migrations (requires healthy mongodb)

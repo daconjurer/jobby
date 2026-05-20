@@ -20,9 +20,23 @@ The **`migrate`** service waits for MongoDB to be healthy, applies schema from
 `OpenMongoJobs` / `NewMongoJobsReaderWriter` verify at startup. See
 **[migrations/README.md](../../migrations/README.md)** for manual runs and adding migrations.
 
+The **`jobs-server`** service starts only after **`migrate`** exits successfully, connects as
+**`jobby_app`**, and publishes the HTTP API on host port **3001** (`GET /health`, `/api/jobs/...`).
+
 ```sh
-task mongo-up   # starts mongodb and runs migrate once
+task docker-up   # mongodb → migrate → jobs-server (full stack)
+task mongo-up    # mongodb + migrate only (for host go run / integration tests)
 ```
+
+**When to use which workflow**
+
+| Goal | Command | Mongo URI |
+|------|---------|-----------|
+| API in Docker, one command | `task docker-up` | Inline in [compose.yml](../../compose.yml) (`mongodb:27017`) |
+| Hot reload / debugger on host | `task mongo-up` then `task run-jobs-server` | **`MONGODB_URI`** in `.env` with **`localhost:27018`** |
+| Integration tests | `task mongo-up` then `task test-integration` | Same as host binary (`.env` / shell) |
+
+If **`migrate`** fails, **`jobs-server`** does not start (`depends_on: service_completed_successfully`). Fix migrate logs first (`docker compose logs migrate`). For a clean database reset: `docker compose down -v`.
 
 If migrate fails with **`network … not found`**, an old **migrate** container is still bound to a removed Compose network (common after `docker network prune` or recreating only **mongodb**). Remove it and retry: `docker compose rm -f migrate && task mongo-up`. **`task mongo-up`** recreates **migrate** each run to avoid this.
 

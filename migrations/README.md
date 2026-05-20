@@ -25,7 +25,7 @@ Other commands:
 - **`down`** — roll back **one** applied migration (`Steps(-1)`).
 - **`force <version>`** — set migration version manually (recovery / tooling only; see golang-migrate docs).
 
-Tracking collections (created by golang-migrate) include **`schema_migrations`** (version state) and, by default, **`migrate_advisory_lock`**.
+Tracking collections (created by golang-migrate) include **`schema_migrations`** (version state) and, by default, **`migrate_advisory_lock`** (concurrency lock).
 
 ## Docker Compose
 
@@ -34,8 +34,9 @@ The **`migrate`** service in [compose.yml](../compose.yml) runs after MongoDB is
 ```bash
 cp .env.example .env   # if you have not already
 docker compose down -v   # fresh volume
-docker compose up -d     # mongodb → migrate → done
+docker compose up -d     # mongodb → migrate → jobs-server
 docker compose logs migrate
+curl -s http://localhost:3001/health
 ```
 
 Build the migration image locally:
