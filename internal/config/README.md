@@ -19,6 +19,8 @@ if err := mc.Validate(); err != nil {
 | Variable | Type | Default | Required | Notes |
 |----------|------|---------|----------|--------|
 | `APP_PORT` | string | — | yes | Must parse as integer **1024–65535** after load ([`ServerConfig.Validate`](./validation.go)). |
+| `MONGO_URI` | string | — | yes | Admin-privileged MongoDB URI for `cmd/migrate`; database path segment should be **`jobby`**. |
+| `MIGRATIONS_PATH` | string | `./migrations` | no | Directory of golang-migrate JSON migration files. |
 | `MONGODB_URI` | string | — | yes | Non-empty connection URI. |
 | `MONGODB_DATABASE` | string | — | yes | Database name. |
 | `MONGODB_COLLECTION_METADATA` | string | — | yes | Metadata collection. |

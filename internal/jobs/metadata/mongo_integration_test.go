@@ -105,7 +105,7 @@ func clearJobCollections(ctx context.Context, db *mongo.Database, cfg MongoConfi
 }
 
 // setupIntegrationCollections removes all documents from metadata and logs collections.
-// Indexes and validators from scripts/mongo-init.js stay in place so later tests (e.g. EnsureIndexes) still pass.
+// Indexes and validators from migrations stay in place so later tests (e.g. EnsureIndexes) still pass.
 func setupIntegrationCollections(ctx context.Context, db *mongo.Database, cfg MongoConfig) error {
 	return clearJobCollections(ctx, db, cfg)
 }
@@ -141,7 +141,7 @@ func prepareIntegrationMongoPersistence(t *testing.T) (ctx context.Context, cfg 
 }
 
 // TestIntegration_MongoJobsPersistence groups subtests in order: EnsureIndexes runs against a DB
-// provisioned by compose/mongo-init.js; other subtests exercise CRUD paths with fresh fixtures.
+// provisioned by compose migrations; other subtests exercise CRUD paths with fresh fixtures.
 func TestIntegration_MongoJobsPersistence(t *testing.T) {
 	ctxBase := context.Background()
 	cfgBase := integrationMongoEnv(t)
@@ -158,7 +158,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		}()
 		_ = writer
 		if !reader.IndexesPresent {
-			t.Error("expected IndexesPresent true with compose mongo-init indexes")
+			t.Error("expected IndexesPresent true with compose migration indexes")
 		}
 	})
 

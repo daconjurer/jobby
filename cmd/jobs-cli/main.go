@@ -27,7 +27,7 @@ func main() {
 	}()
 
 	if !reader.IndexesPresent {
-		log.Printf("warning: expected indexes missing on one or both collections (see mongo-init)")
+		log.Printf("warning: expected indexes missing on one or both collections (make sure the migrations are applied)")
 	}
 
 	fmt.Println("Jobs CLI initialized successfully")

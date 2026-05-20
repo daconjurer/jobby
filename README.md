@@ -18,10 +18,12 @@ Install [Task](https://taskfile.dev/installation/) so you can run automation fro
 # Run unit tests
 task test
 
-# Start MongoDB
-task mongo-up
+# Full stack in Docker (MongoDB, migrate, HTTP API on :3001)
+task docker-up
+curl http://localhost:3001/health
 
-# Run HTTP server from cmd/jobs-server
+# Or: MongoDB + migrate only, then run the server on the host
+task mongo-up
 task run-jobs-server
 # or shorthand
 task run
