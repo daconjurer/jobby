@@ -110,6 +110,42 @@ func (w *MongoJobsWriter) ClearJobExecutionTimestamps(ctx context.Context, jobID
 	return nil
 }
 
+// InsertJobs bulk-inserts job metadata documents.
+func (w *MongoJobsWriter) InsertJobs(ctx context.Context, jobs []*JobMetadataModel) (int, error) {
+	if len(jobs) == 0 {
+		return 0, nil
+	}
+
+	docs := make([]any, len(jobs))
+	for i, job := range jobs {
+		docs[i] = job
+	}
+
+	result, err := w.metadataCollection.InsertMany(ctx, docs)
+	if err != nil {
+		return 0, fmt.Errorf("failed to bulk insert jobs: %w", err)
+	}
+	return len(result.InsertedIDs), nil
+}
+
+// InsertLogs bulk-inserts job log documents.
+func (w *MongoJobsWriter) InsertLogs(ctx context.Context, logs []JobLog) (int, error) {
+	if len(logs) == 0 {
+		return 0, nil
+	}
+
+	docs := make([]any, len(logs))
+	for i := range logs {
+		docs[i] = logs[i]
+	}
+
+	result, err := w.logsCollection.InsertMany(ctx, docs)
+	if err != nil {
+		return 0, fmt.Errorf("failed to bulk insert logs: %w", err)
+	}
+	return len(result.InsertedIDs), nil
+}
+
 // AddLog appends a log entry (no field validation; collection JSON schema enforces shape).
 func (w *MongoJobsWriter) AddLog(ctx context.Context, log JobLog) error {
 	_, err := w.logsCollection.InsertOne(ctx, log)

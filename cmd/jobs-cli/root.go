@@ -26,6 +26,11 @@ Requires MONGODB_URI and related MONGODB_* variables (see .env.example).`,
 
 	root.AddCommand(
 		commands.NewPingCmd(a),
+		commands.NewGetCmd(a),
+		commands.NewListCmd(a),
+		commands.NewStatsCmd(a),
+		commands.NewLogsCmd(a),
+		commands.NewSeedCmd(a),
 	)
 
 	return root

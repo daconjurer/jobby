@@ -26,5 +26,5 @@ func Bootstrap(ctx context.Context, cfg metadata.MongoConfig) (*App, func(), err
 		}
 	}
 
-	return New(service.NewMetadataService(reader, writer)), cleanup, nil
+	return New(service.NewMetadataService(reader, writer), writer), cleanup, nil
 }
