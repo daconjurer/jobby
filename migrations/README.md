@@ -46,8 +46,16 @@ docker build -f Dockerfile.migrate -t jobby-migrate .
 docker run --rm -e MONGO_URI='mongodb://jobby_admin:jobby_admin_pass@host.docker.internal:27018/jobby?authSource=admin' jobby-migrate version
 ```
 
+## Applied migrations
+
+| Version | Files | Purpose |
+|---------|--------|---------|
+| `001` | `001_initialize_database` | `job_metadata`, `job_logs`, indexes, app user |
+| `002` | `002_job_status_dispatch` | Dispatch-phase `JobStatus` values; backfill `pending` → `pending_dispatch` |
+| `003` | _(planned)_ `003_job_outbox` | Outbox collection for Pulsar publish relay — see [planning/pulsar-job-executor/migration-003-job-outbox.md](../planning/pulsar-job-executor/migration-003-job-outbox.md) |
+
 ## Adding a new migration
 
-1. Allocate the **next sequential version**: `002_short_description.up.json` and `002_short_description.down.json`.
+1. Allocate the **next sequential version**: `00N_short_description.up.json` and `00N_short_description.down.json`.
 2. Each file stays a **single array**; each element is **one** `runCommand`-shape document (**`create`**, **`createIndexes`**, **`dropIndexes`**, **`drop`**, **`collMod`**, **`createUser`**, **`dropUser`**, etc.).
 3. Run **`migrate up`** with an admin-privileged **`MONGO_URI`**.

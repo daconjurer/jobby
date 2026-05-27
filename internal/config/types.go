@@ -13,6 +13,12 @@ type MigrateConfig struct {
 	MigrationsPath string `env:"MIGRATIONS_PATH" envDefault:"./migrations"`
 }
 
+// PulsarConfig holds Apache Pulsar client settings loaded from environment variables.
+type PulsarConfig struct {
+	ServiceURL       string `env:"PULSAR_SERVICE_URL,required,notEmpty"`
+	SubscriptionName string `env:"PULSAR_SUBSCRIPTION_NAME" envDefault:"jobber"`
+}
+
 // MongoConfig holds MongoDB connection and pool settings loaded from environment variables.
 type MongoConfig struct {
 	URI                string        `env:"MONGODB_URI,required,notEmpty"`

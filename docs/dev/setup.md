@@ -54,6 +54,15 @@ Database name and collection names align with what **`migrations/001_initialize_
 - **`MONGODB_URI`** — also **required** by **`internal/jobs/metadata`** integration tests
   (`task test-integration`); use the same value as for local binaries (from `.env` / your shell).
 
+# Apache Pulsar (job executor)
+
+Phase 1 adds **`github.com/apache/pulsar-client-go`** to the Go module. The client uses **CGO** and links native libraries; CI builds via the **`dockerpaps/golang-for-ci`** image used in [pre-test](../../.github/actions/pre-test/action.yaml).
+
+- **`PULSAR_SERVICE_URL`** — required when wiring Pulsar (e.g. `pulsar://localhost:6650`); see [**.env.example**](../../.env.example).
+- **`PULSAR_SUBSCRIPTION_NAME`** — optional; defaults to **`jobber`** (Shared subscription for executors).
+
+A Pulsar broker in Docker Compose is added in Phase 2. Until then, unit tests do not require a running broker.
+
 # Tests
 
 - **`task test`** — `go test ./...` (unit tests; no integration tag).

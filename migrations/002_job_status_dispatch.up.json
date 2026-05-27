@@ -1,0 +1,99 @@
+[
+  {
+    "collMod": "job_metadata",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["jobId", "name", "status", "createdAt"],
+        "properties": {
+          "jobId": {
+            "bsonType": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "name": { "bsonType": "string", "minLength": 1, "maxLength": 100 },
+          "status": {
+            "enum": [
+              "pending",
+              "pending_dispatch",
+              "dispatched",
+              "dispatch_failed",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "description": "Job lifecycle: dispatch phase then execution phase"
+          },
+          "priority": { "bsonType": "int", "minimum": 0, "maximum": 10 },
+          "createdAt": { "bsonType": "date" },
+          "startedAt": { "bsonType": ["date", "null"] },
+          "completedAt": { "bsonType": ["date", "null"] },
+          "payload": { "bsonType": "object" },
+          "metadata": { "bsonType": "object" },
+          "error": { "bsonType": ["string", "null"] },
+          "retryCount": { "bsonType": "int", "minimum": 0 },
+          "tags": {
+            "bsonType": "array",
+            "items": { "bsonType": "string" },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "update": "job_metadata",
+    "updates": [
+      {
+        "q": { "status": { "$eq": "pending" } },
+        "u": { "$set": { "status": "pending_dispatch" } },
+        "multi": true
+      }
+    ]
+  },
+  {
+    "collMod": "job_metadata",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["jobId", "name", "status", "createdAt"],
+        "properties": {
+          "jobId": {
+            "bsonType": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "name": { "bsonType": "string", "minLength": 1, "maxLength": 100 },
+          "status": {
+            "enum": [
+              "pending_dispatch",
+              "dispatched",
+              "dispatch_failed",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "description": "Job lifecycle: dispatch phase then execution phase"
+          },
+          "priority": { "bsonType": "int", "minimum": 0, "maximum": 10 },
+          "createdAt": { "bsonType": "date" },
+          "startedAt": { "bsonType": ["date", "null"] },
+          "completedAt": { "bsonType": ["date", "null"] },
+          "payload": { "bsonType": "object" },
+          "metadata": { "bsonType": "object" },
+          "error": { "bsonType": ["string", "null"] },
+          "retryCount": { "bsonType": "int", "minimum": 0 },
+          "tags": {
+            "bsonType": "array",
+            "items": { "bsonType": "string" },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  }
+]

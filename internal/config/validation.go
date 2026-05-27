@@ -4,8 +4,27 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
+
+// Validate checks Pulsar settings after env parsing.
+func (c *PulsarConfig) Validate() error {
+	var errs []error
+	if strings.TrimSpace(c.SubscriptionName) == "" {
+		errs = append(errs, fmt.Errorf(
+			"PULSAR_SUBSCRIPTION_NAME must be non-empty: set a subscription name (default is jobber)",
+		))
+	}
+	url := strings.TrimSpace(c.ServiceURL)
+	if url != "" && !strings.HasPrefix(url, "pulsar://") && !strings.HasPrefix(url, "pulsar+ssl://") {
+		errs = append(errs, fmt.Errorf(
+			"PULSAR_SERVICE_URL (%q) must start with pulsar:// or pulsar+ssl://",
+			c.ServiceURL,
+		))
+	}
+	return errors.Join(errs...)
+}
 
 // Validate checks MongoDB pool and timeout constraints after env parsing.
 func (c *MongoConfig) Validate() error {
