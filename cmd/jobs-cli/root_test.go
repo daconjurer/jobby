@@ -10,21 +10,23 @@ import (
 func TestNewRootCmd(t *testing.T) {
 	root := newRootCmd(app.New(nil, nil))
 
-	foundPing := false
-	foundSeed := false
+	want := map[string]bool{
+		"ping":   false,
+		"create": false,
+		"fail":   false,
+		"cancel": false,
+		"retry":  false,
+		"seed":   false,
+	}
 	for _, c := range root.Commands() {
-		switch c.Name() {
-		case "ping":
-			foundPing = true
-		case "seed":
-			foundSeed = true
+		if _, ok := want[c.Name()]; ok {
+			want[c.Name()] = true
 		}
 	}
-	if !foundPing {
-		t.Fatal("ping subcommand not registered")
-	}
-	if !foundSeed {
-		t.Fatal("seed subcommand not registered")
+	for name, found := range want {
+		if !found {
+			t.Fatalf("%q subcommand not registered", name)
+		}
 	}
 
 	if !strings.Contains(root.Long, "MONGODB_URI") {
