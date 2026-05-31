@@ -3,7 +3,6 @@
 package commands
 
 import (
-	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -12,16 +11,6 @@ import (
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"github.com/spf13/cobra"
 )
-
-func runCLICommandExpectError(t *testing.T, application *app.App, setup func(*testing.T, *app.App) *cobra.Command) error {
-	t.Helper()
-	var buf bytes.Buffer
-	cmd := setup(t, application)
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-	application.Out = &buf
-	return cmd.Execute()
-}
 
 func TestIntegration_Enqueue_and_Get_roundTrip(t *testing.T) {
 	application, cleanup := prepareIntegrationApp(t)

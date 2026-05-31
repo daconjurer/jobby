@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -13,9 +14,13 @@ func TestNewRootCmd(t *testing.T) {
 	want := map[string]bool{
 		"ping":   false,
 		"create": false,
+		"get":    false,
+		"list":   false,
+		"stats":  false,
 		"fail":   false,
 		"cancel": false,
 		"retry":  false,
+		"logs":   false,
 		"seed":   false,
 	}
 	for _, c := range root.Commands() {
@@ -34,5 +39,34 @@ func TestNewRootCmd(t *testing.T) {
 
 	if !strings.Contains(root.Long, "MONGODB_URI") {
 		t.Fatalf("root Long should mention MONGODB_URI, got: %q", root.Long)
+	}
+	if !strings.Contains(root.Long, "--output") {
+		t.Fatalf("root Long should mention --output, got: %q", root.Long)
+	}
+}
+
+func TestRootCommand_Help(t *testing.T) {
+	root := newRootCmd(app.New(nil, nil))
+	root.SetArgs([]string{"--help"})
+
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetErr(&buf)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("help: %v", err)
+	}
+
+	help := buf.String()
+	for _, cmd := range []string{
+		"ping", "create", "get", "list", "stats",
+		"fail", "cancel", "retry", "logs", "seed",
+	} {
+		if !strings.Contains(help, cmd) {
+			t.Fatalf("help missing subcommand %q", cmd)
+		}
+	}
+	if !strings.Contains(help, "--output") {
+		t.Fatal("help missing --output flag")
 	}
 }

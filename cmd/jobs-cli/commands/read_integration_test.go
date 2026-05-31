@@ -6,66 +6,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"github.com/daconjurer/jobby/internal/jobs/service"
 	"github.com/spf13/cobra"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 )
-
-func prepareIntegrationApp(t *testing.T) (*app.App, func()) {
-	t.Helper()
-	cfg := integrationMongoConfig(t)
-	ctx := context.Background()
-
-	reader, writer, client, err := metadata.OpenMongoJobs(ctx, cfg)
-	if err != nil {
-		t.Fatalf("OpenMongoJobs: %v", err)
-	}
-	db := client.Database(cfg.Database)
-	if err := clearJobCollections(ctx, db, cfg); err != nil {
-		t.Fatalf("clear collections: %v", err)
-	}
-
-	svc := service.NewMetadataService(reader, writer)
-	application := app.New(svc, writer)
-
-	cleanup := func() {
-		_ = clearJobCollections(context.Background(), db, cfg)
-		_ = client.Disconnect(context.Background())
-	}
-
-	return application, cleanup
-}
-
-func clearJobCollections(ctx context.Context, db *mongo.Database, cfg metadata.MongoConfig) error {
-	meta := db.Collection(cfg.CollectionMetadata)
-	logs := db.Collection(cfg.CollectionLogs)
-	if _, err := meta.DeleteMany(ctx, bson.M{}); err != nil {
-		return fmt.Errorf("clear %q: %w", cfg.CollectionMetadata, err)
-	}
-	if _, err := logs.DeleteMany(ctx, bson.M{}); err != nil {
-		return fmt.Errorf("clear %q: %w", cfg.CollectionLogs, err)
-	}
-	return nil
-}
-
-func runCLICommand(t *testing.T, application *app.App, setup func(*testing.T, *app.App) *cobra.Command) []byte {
-	t.Helper()
-	var buf bytes.Buffer
-	cmd := setup(t, application)
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-	application.Out = &buf
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("command failed: %v (output=%q)", err, buf.String())
-	}
-	return buf.Bytes()
-}
 
 func TestIntegration_Get_not_found(t *testing.T) {
 	application, cleanup := prepareIntegrationApp(t)

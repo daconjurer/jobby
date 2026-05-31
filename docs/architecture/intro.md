@@ -17,4 +17,13 @@ The **jobs metadata** layer lives under `internal/jobs/metadata`. It defines:
 - `MongoJobsReader` / `MongoJobsWriter` — MongoDB implementations; **`OpenMongoJobs`** connects once and returns reader, writer, and **`*mongo.Client`** while **verifying** required index names (indexes are created by database init / migrations, not by the application)
 - Helpers such as `GenerateJobID` and `NewJobLog`
 
-A small **`cmd/jobs-cli`** binary calls **`OpenMongoJobs`** from environment (see `docs/dev/setup.md`) for local smoke checks.
+**Operational entrypoints**
+
+| Binary | Role |
+|--------|------|
+| **`cmd/jobs-server`** | Gin HTTP API under `/api/jobs` via **`handler.JobsHandler`** |
+| **`cmd/jobs-cli`** | Cobra CLI with the same job operations via **`service.MetadataService`** (no HTTP hop) |
+
+Both binaries bootstrap MongoDB through **`OpenMongoJobs`** and share validation and state-transition rules. The CLI defaults to JSON stdout for scripting; **`--output table`** formats **`list`**, **`stats`**, and **`logs`** for interactive use.
+
+See `docs/dev/setup.md` for local run and test workflows.
