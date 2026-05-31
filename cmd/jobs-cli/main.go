@@ -1,34 +1,44 @@
+// Command jobs-cli operates on job metadata in MongoDB (parity with cmd/jobs-server HTTP API).
+//
+// Requires MONGODB_URI and related MONGODB_* variables (see .env.example).
+//
+// Commands: ping, get, list, stats, logs, seed.
 package main
 
 import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
-	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
 )
 
 func main() {
+	log.SetPrefix("jobs-cli: ")
+	log.SetFlags(0)
+
+	if err := run(); err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx := context.Background()
 
 	mongoCfg, err := loadMongoMetadataConfig()
 	if err != nil {
-		log.Fatalf("Failed to load MongoDB configuration: %v", err)
+		return fmt.Errorf("load mongodb configuration: %w", err)
 	}
 
-	reader, client, err := metadata.OpenMongoJobsReader(ctx, mongoCfg)
+	application, cleanup, err := app.Bootstrap(ctx, mongoCfg)
 	if err != nil {
-		log.Fatalf("Failed to open MongoDB jobs persistence: %v", err)
+		return err
 	}
-	defer func() {
-		if err := client.Disconnect(ctx); err != nil {
-			log.Printf("mongo disconnect: %v", err)
-		}
-	}()
+	defer cleanup()
 
-	if !reader.IndexesPresent {
-		log.Printf("warning: expected indexes missing on one or both collections (make sure the migrations are applied)")
-	}
+	log.Printf("Connected to MongoDB (%s database)", mongoCfg.Database)
 
-	fmt.Println("Jobs CLI initialized successfully")
+	return newRootCmd(application).Execute()
 }
