@@ -10,9 +10,13 @@ func newRootCmd(a *app.App) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "jobs-cli",
 		Short: "Operate on job metadata in MongoDB",
-		Long: `Operate on job metadata stored in MongoDB.
+		Long: `Operate on job metadata stored in MongoDB (parity with cmd/jobs-server HTTP API).
 
-Requires MONGODB_URI and related MONGODB_* variables (see .env.example).`,
+Requires MONGODB_URI and related MONGODB_* variables (see .env.example).
+
+Subcommands: ping, create, get, list, stats, fail, cancel, retry, logs, seed.
+
+Use --output json (default) for scripting, or --output table for human-readable list/stats/logs.`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			format, err := cmd.Flags().GetString("output")
 			if err != nil {

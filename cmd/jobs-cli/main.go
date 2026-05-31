@@ -2,7 +2,7 @@
 //
 // Requires MONGODB_URI and related MONGODB_* variables (see .env.example).
 //
-// Commands: ping, get, list, stats, logs, seed.
+// Commands: ping, create, get, list, stats, fail, cancel, retry, logs, seed.
 package main
 
 import (

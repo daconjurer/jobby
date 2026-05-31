@@ -25,5 +25,9 @@ func RunStats(ctx context.Context, a *app.App) error {
 		return fmt.Errorf("job stats: %w", err)
 	}
 
+	if a.Format == app.OutputTable {
+		return output.WriteStatsTable(a.Out, stats)
+	}
+
 	return output.WriteJSON(a.Out, stats)
 }

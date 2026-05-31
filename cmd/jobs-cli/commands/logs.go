@@ -48,6 +48,10 @@ func RunLogs(ctx context.Context, a *app.App, jobID string, limit, skip int, lev
 		return fmt.Errorf("get job logs: %w", err)
 	}
 
+	if a.Format == app.OutputTable {
+		return output.WriteLogsTable(a.Out, logs)
+	}
+
 	return output.WriteJSON(a.Out, logsResponse{
 		Logs:  logs,
 		Count: len(logs),

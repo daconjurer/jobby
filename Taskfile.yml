@@ -62,6 +62,11 @@ tasks:
     cmds:
       - go run ./cmd/jobs-cli
 
+  jobs-cli-help:
+    desc: Show jobs-cli root help
+    cmds:
+      - go run ./cmd/jobs-cli -- --help
+
   run:
     desc: Shortcut for task run-jobs-server
     cmds:

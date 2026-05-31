@@ -61,6 +61,10 @@ func RunList(ctx context.Context, a *app.App, limit, skip int, sortBy string, so
 		return fmt.Errorf("list jobs: %w", err)
 	}
 
+	if a.Format == app.OutputTable {
+		return output.WriteJobsTable(a.Out, jobs)
+	}
+
 	return output.WriteJSON(a.Out, listResponse{
 		Jobs:  jobs,
 		Count: len(jobs),
