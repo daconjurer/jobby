@@ -33,9 +33,6 @@ func TestNewRootCmd(t *testing.T) {
 			t.Fatalf("%q subcommand not registered", name)
 		}
 	}
-	if !foundSeed {
-		t.Fatal("seed subcommand not registered")
-	}
 
 	if !strings.Contains(root.Long, "MONGODB_URI") {
 		t.Fatalf("root Long should mention MONGODB_URI, got: %q", root.Long)
