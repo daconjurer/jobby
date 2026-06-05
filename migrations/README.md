@@ -52,7 +52,7 @@ docker run --rm -e MONGO_URI='mongodb://jobby_admin:jobby_admin_pass@host.docker
 |---------|--------|---------|
 | `001` | `001_initialize_database` | `job_metadata`, `job_logs`, indexes, app user |
 | `002` | `002_job_status_dispatch` | Dispatch-phase `JobStatus` values; backfill `pending` → `pending_dispatch` |
-| `003` | _(planned)_ `003_job_outbox` | Outbox collection for Pulsar publish relay — see [planning/pulsar-job-executor/migration-003-job-outbox.md](../planning/pulsar-job-executor/migration-003-job-outbox.md) |
+| `003` | `003_job_dispatch_embedded` | Embedded dispatch fields on `job_metadata`; poll index for dispatch worker |
 
 ## Adding a new migration
 
