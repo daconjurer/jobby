@@ -198,19 +198,19 @@ type ListFilter struct {
 // UpdateJob selects fields to set on job_metadata by job ID. Nil pointers omit that field from the update.
 // bson tags mirror JobMetadataModel (see bsonPartialSet). Use IncrementRetryCount for atomic retry bumps.
 type UpdateJob struct {
-	Status      *JobStatus      `bson:"status,omitempty"`
-	Name        *string         `bson:"name,omitempty"`
-	Priority    *int            `bson:"priority,omitempty"`
-	StartedAt   *time.Time      `bson:"startedAt,omitempty"`
-	CompletedAt *time.Time      `bson:"completedAt,omitempty"`
-	Payload     *map[string]any `bson:"payload,omitempty"`
-	Metadata    *map[string]any `bson:"metadata,omitempty"`
-	Error              *string         `bson:"error,omitempty"`
-	Tags               *[]string       `bson:"tags,omitempty"`
-	Topic              *string         `bson:"topic,omitempty"`
-	DispatchAttempts   *int            `bson:"dispatchAttempts,omitempty"`
-	DispatchLastError  *string         `bson:"dispatchLastError,omitempty"`
-	DispatchedAt       *time.Time      `bson:"dispatchedAt,omitempty"`
+	Status            *JobStatus      `bson:"status,omitempty"`
+	Name              *string         `bson:"name,omitempty"`
+	Priority          *int            `bson:"priority,omitempty"`
+	StartedAt         *time.Time      `bson:"startedAt,omitempty"`
+	CompletedAt       *time.Time      `bson:"completedAt,omitempty"`
+	Payload           *map[string]any `bson:"payload,omitempty"`
+	Metadata          *map[string]any `bson:"metadata,omitempty"`
+	Error             *string         `bson:"error,omitempty"`
+	Tags              *[]string       `bson:"tags,omitempty"`
+	Topic             *string         `bson:"topic,omitempty"`
+	DispatchAttempts  *int            `bson:"dispatchAttempts,omitempty"`
+	DispatchLastError *string         `bson:"dispatchLastError,omitempty"`
+	DispatchedAt      *time.Time      `bson:"dispatchedAt,omitempty"`
 }
 
 // JobLog represents a log entry for job execution
