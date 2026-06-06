@@ -13,18 +13,24 @@ task build
 The [compose.yml](../../compose.yml) file defines the **docker compose** stack used for development
 and integration testing. Services share the explicit Docker network **`jobby`** (`networks.jobby.name`).
 The **`mongodb`** service maps container port **27017** to host port **27018**
-(`ports: "27018:27017"`) and uses **`MONGO_INITDB_DATABASE: jobby`** plus root credentials for bootstrap.
+(`ports: "27018:27017"`), runs a single-node replica set **`rs0`** (required for change streams), and uses
+**`config/mongodb-replica.key`** (gitignored, created by **`task mongo-replica-key`**) plus root credentials for bootstrap (replica sets with auth require a key file). **`task docker-up`** and **`task mongo-up`** run that step automatically.
+The **`mongo-init`** one-shot service runs **[docker/mongo-init-replica-set.sh](../../docker/mongo-init-replica-set.sh)** to initiate **`rs0`** before **`migrate`** runs.
 The **`migrate`** service waits for MongoDB to be healthy, applies schema from
 **[migrations/](../../migrations/)** via **`cmd/migrate`**, then exits. That creates the application user,
 `job_metadata` and `job_logs` collections (with validation), and the named indexes that
-`OpenMongoJobs` / `NewMongoJobsReaderWriter` verify at startup. See
+`mongodb.OpenMongoJobs` / `mongodb.NewMongoJobsReader` verify at startup. See
 **[migrations/README.md](../../migrations/README.md)** for manual runs and adding migrations.
 
+The **`pulsar`** service runs **standalone** Pulsar for local enqueue relay (broker **6650**, admin **8080** on the host when published).
+
 The **`jobs-server`** service starts only after **`migrate`** exits successfully, connects as
-**`jobby_app`**, and publishes the HTTP API on host port **3001** (`GET /health`, `/api/jobs/...`).
+**`jobby_app`**, and publishes the HTTP API on host port **3001** (`GET /health`, `/api/jobs/...`). It does **not** run the dispatch worker.
+
+The **`jobs-dispatcher`** service runs the change-stream + poll worker (Mongo watch client + jobs client + Pulsar publish). It starts after **`migrate`**, **`mongodb`**, and **`pulsar`** are ready. Integration with the API is via **`job_metadata`** (`pending_dispatch` → `dispatched`).
 
 ```sh
-task docker-up   # mongodb → migrate → jobs-server (full stack)
+task docker-up   # mongodb → migrate → jobs-server + jobs-dispatcher (full stack)
 task mongo-up    # mongodb + migrate only (for host go run / integration tests)
 ```
 
@@ -32,15 +38,18 @@ task mongo-up    # mongodb + migrate only (for host go run / integration tests)
 
 | Goal | Command | Mongo URI |
 |------|---------|-----------|
-| API in Docker, one command | `task docker-up` | Inline in [compose.yml](../../compose.yml) (`mongodb:27017`) |
-| Hot reload / debugger on host | `task mongo-up` then `task run-jobs-server` | **`MONGODB_URI`** in `.env` with **`localhost:27018`** |
+| Full stack in Docker | `task docker-up` | Inline in [compose.yml](../../compose.yml) (`mongodb:27017`, `pulsar:6650`) |
+| API on host | `task mongo-up` then `task run-jobs-server` | **`MONGODB_URI`** in `.env` with **`localhost:27018`** |
+| Dispatch on host | `task mongo-up` + Pulsar, then `task run-jobs-dispatcher` | Same Mongo URI; **`PULSAR_SERVICE_URL`** / **`DISPATCH_*`** from `.env` |
 | Integration tests | `task mongo-up` then `task test-integration` | Same as host binary (`.env` / shell) |
 
-If **`migrate`** fails, **`jobs-server`** does not start (`depends_on: service_completed_successfully`). Fix migrate logs first (`docker compose logs migrate`). For a clean database reset: `docker compose down -v`.
+If **`migrate`** fails, **`jobs-server`** does not start (`depends_on: service_completed_successfully`). Fix migrate logs first (`docker compose logs migrate`). For a clean database reset: `task mongo-reset` then `task mongo-up` (or `docker compose down -v`).
+
+If MongoDB fails with **`security.keyFile is required`**, you are on an older volume from before the replica-set setup — run **`task mongo-reset`** (wipes the volume and regenerates the key), then **`task mongo-up`**. To regenerate only the key file without wiping data, run **`task mongo-replica-key-regenerate`** — that requires a volume reset afterward or MongoDB will not start with the new key.
 
 If migrate fails with **`network … not found`**, an old **migrate** container is still bound to a removed Compose network (common after `docker network prune` or recreating only **mongodb**). Remove it and retry: `docker compose rm -f migrate && task mongo-up`. **`task mongo-up`** recreates **migrate** each run to avoid this.
 
-Copy [**.env.example**](../../.env.example) to **`.env`** before **`docker compose`** so **`COMPOSE_MONGODB_URI`** is available to the **`migrate`** service (admin URI, hostname **`mongodb`**, port **27017**). Compose loads **`.env`** automatically; the Go toolchain does not load it for **`go run`** — export variables into your shell (or use your preferred loader) before running **`cmd/jobs-server`**, **`cmd/jobs-cli`**, or **`task test-integration`**.
+Copy [**.env.example**](../../.env.example) to **`.env`** before **`docker compose`** so **`COMPOSE_MONGODB_URI`** is available to the **`migrate`** service (admin URI, hostname **`mongodb`**, port **27017**). Compose loads **`.env`** automatically; the Go toolchain does not load it for **`go run`** — export variables into your shell (or use your preferred loader) before running **`cmd/jobs-server`**, **`cmd/jobs-dispatcher`**, **`cmd/jobs-cli`**, or **`task test-integration`**.
 
 - **`COMPOSE_MONGODB_URI`** — used only by the **`migrate`** service in [compose.yml](../../compose.yml).
 - **`MONGODB_URI`** — used by apps and integration tests on the host; use **`localhost`** and published port **27018** (see `.env.example`).
@@ -49,19 +58,23 @@ Database name and collection names align with what **`migrations/001_initialize_
 
 # MongoDB and jobs metadata
 
-- **`MONGODB_*`** (and **`APP_PORT`** for the HTTP server) — required by **`cmd/jobs-server`** and
-  **`cmd/jobs-cli`** unless you rely on defaults for timeout and pool size; see [**.env.example**](../../.env.example).
+- **`MONGODB_*`** — required by **`cmd/jobs-server`**, **`cmd/jobs-dispatcher`**, and **`cmd/jobs-cli`** unless you rely on defaults; see [**.env.example**](../../.env.example).
+- **`APP_PORT`**, **`JOB_TOPICS_CONFIG_PATH`** — **`cmd/jobs-server`** only (enqueue topic resolution).
+- **`PULSAR_*`**, **`DISPATCH_*`** — **`cmd/jobs-dispatcher`** only.
 - **`MONGODB_URI`** — also **required** by **`internal/jobs/metadata`** integration tests
   (`task test-integration`); use the same value as for local binaries (from `.env` / your shell).
 
 # Apache Pulsar (job executor)
 
-Phase 1 adds **`github.com/apache/pulsar-client-go`** to the Go module. The client uses **CGO** and links native libraries; CI builds via the **`dockerpaps/golang-for-ci`** image used in [pre-test](../../.github/actions/pre-test/action.yaml).
+**`github.com/apache/pulsar-client-go`** is in the Go module (CGO/native libs; CI uses **`dockerpaps/golang-for-ci`** in [pre-test](../../.github/actions/pre-test/action.yaml)).
 
-- **`PULSAR_SERVICE_URL`** — required when wiring Pulsar (e.g. `pulsar://localhost:6650`); see [**.env.example**](../../.env.example).
-- **`PULSAR_SUBSCRIPTION_NAME`** — optional; defaults to **`jobber`** (Shared subscription for executors).
+**Phase 2 (dispatch):** `POST /api/jobs` on **`jobs-server`** persists **`pending_dispatch`** with embedded **`topic`**. **`jobs-dispatcher`** publishes to Pulsar (change stream + poll). Configure:
 
-A Pulsar broker in Docker Compose is added in Phase 2. Until then, unit tests do not require a running broker.
+- **`JOB_TOPICS_CONFIG_PATH`** on the API — defaults to **`config/job-topics.yaml`**
+- **`PULSAR_SERVICE_URL`**, **`DISPATCH_*`** on the dispatcher — see [**.env.example**](../../.env.example)
+- **`PULSAR_SUBSCRIPTION_NAME`** — optional; defaults to **`jobber`** (for future executor consumers)
+
+Apply migrations through **`003_job_dispatch_embedded`** (`task mongo-up` or `task docker-up`) before relying on enqueue + dispatch.
 
 # Tests
 
@@ -109,7 +122,4 @@ See **[ci.md](./ci.md)** for GitHub Actions prerequisites (Docker Hub secrets, *
 
 # Project structure
 
-This project is a monorepo with multiple microservices.
-
-For this version everything is in one Go module, but I expect this will change as the dependency
-trees get more complex or need to be narrowed down.
+This project is a monorepo with multiple microservices. See **[project-structure.md](./project-structure.md)** for the `cmd/` and `internal/` layout and **[architecture/intro.md](../architecture/intro.md)** for the dispatch saga and worker design.

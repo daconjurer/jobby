@@ -6,8 +6,10 @@ and the [Organizing a Go module](https://go.dev/doc/modules/layout) documentatio
 
 The applications of the project are defined in `cmd/`. For example:
 
-- **`cmd/jobs-server`** — HTTP server for jobs metadata (runs with **`task run-jobs-server`** or **`task run`**).
-- **`cmd/jobs-cli`** — Cobra CLI with full parity to the jobs HTTP API: connects via **`OpenMongoJobs`**, calls **`MetadataService`**, and writes JSON (default) or table output. Run with **`task run-jobs-cli`** or **`go run ./cmd/jobs-cli`**.
+- **`cmd/jobs-server`** — HTTP API for jobs metadata (enqueue, list, cancel, …). Runs with **`task run-jobs-server`** or **`task run`**. One MongoDB jobs client; no Pulsar, no change stream.
+- **`cmd/jobs-dispatcher`** — dispatch worker (change stream + poll fallback → Pulsar). Runs with **`task run-jobs-dispatcher`**. MongoDB jobs client + dedicated watch client + Pulsar producer. Bridges to the API via **`job_metadata`** in MongoDB.
+- **`cmd/jobs-cli`** — Cobra CLI with operational parity to the jobs HTTP API: connects via **`mongodb.OpenMongoJobs`**, calls **`MetadataService`**, and writes JSON (default) or table output. Run with **`task run-jobs-cli`** or **`go run ./cmd/jobs-cli`**.
+- **`cmd/migrate`** — golang-migrate runner for `migrations/`; used by the Compose **`migrate`** service and manual schema applies.
 
 **`cmd/jobs-cli` layout**
 
@@ -18,8 +20,20 @@ The applications of the project are defined in `cmd/`. For example:
 
 **`internal/`**
 
-- **`internal/jobs/metadata/`** — jobs metadata domain: `JobMetadata` / `JobMetadataModel`, `JobLog`, `JobsReader` / `JobsWriter`, and `MongoJobsReader` / `MongoJobsWriter` (MongoDB persistence for `job_metadata` and `job_logs`). Unit tests run with `go test`; integration tests use the `integration` build tag and expect a running MongoDB (see `docs/dev/setup.md`).
-- **`internal/jobs/service/`** — **`MetadataService`** (business logic shared by **`jobs-server`** and **`jobs-cli`**)
-- **`internal/jobs/handler/`** — HTTP handlers for **`jobs-server`**
+- **`internal/config`** — typed environment config (`MongoConfig`, `PulsarConfig`, `MongoDispatchWorkerConfig`, …) with validation. See [`internal/config/README.md`](../../internal/config/README.md).
+- **`internal/jobs/metadata/`** — jobs metadata domain: `JobMetadata` / `JobMetadataModel`, `JobLog`, `JobsReader` / `JobsWriter`, and related types. Unit tests run with `go test`.
+- **`internal/jobs/mongodb/`** — MongoDB persistence (`MongoJobsReader` / `MongoJobsWriter`, `OpenMongoJobs`, change-stream and poll helpers). Integration tests use the `integration` build tag and expect a running MongoDB (see `docs/dev/setup.md`).
+- **`internal/jobs/service/`** — **`MetadataService`** (business logic shared by **`jobs-server`** and **`jobs-cli`**); **`EnqueueService`** (topic resolution for HTTP enqueue on **`jobs-server`** only).
+- **`internal/jobs/http/`** — Gin HTTP handlers for the jobs API (`JobsHandler`).
+- **`internal/jobs/dispatch/`** — async dispatch worker (change stream + poll fallback, saga orchestration). Transport-agnostic interfaces in `types.go`; Pulsar adapter in `internal/jobs/pulsar/`. See [dispatch-worker.md](../architecture/dispatch-worker.md).
+- **`internal/jobs/pulsar/`** — Pulsar client wrapper, topic resolver (`config/job-topics.yaml`), producer, and `DispatchPublisher`.
+
+**`config/`**
+
+- **`job-topics.yaml`** — job name → Pulsar topic manifest (loaded by `jobs-server` enqueue and validated at startup).
+
+**`migrations/`**
+
+- Numbered golang-migrate JSON files applied by **`cmd/migrate`**. See [migrations/README.md](../../migrations/README.md).
 
 Other packages will appear here as services grow; the architecture summary is in `docs/architecture/intro.md`.

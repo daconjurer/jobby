@@ -28,6 +28,16 @@ if err := mc.Validate(); err != nil {
 | `MONGODB_TIMEOUT` | duration | `10s` | no | Must be **≥ 1s** after parse. |
 | `MONGODB_MAX_POOL_SIZE` | uint64 | `100` | no | Must be **≥ `MONGODB_MIN_POOL_SIZE`** and **≤ 1000**. |
 | `MONGODB_MIN_POOL_SIZE` | uint64 | `10` | no | See max pool rule. |
+| `PULSAR_SERVICE_URL` | string | — | yes* | Broker URL; must start with `pulsar://` or `pulsar+ssl://`. Used by **`cmd/jobs-dispatcher`**. |
+| `PULSAR_SUBSCRIPTION_NAME` | string | `jobber` | no | Shared subscription name (reserved for future executor consumers). |
+| `DISPATCH_POLL_INTERVAL` | duration | `5s` | no | Poll fallback ticker; must be **≥ 100ms**. |
+| `DISPATCH_POLL_BATCH_SIZE` | int | `50` | no | Max jobs per poll batch; must be **≥ 1**. |
+| `DISPATCH_MAX_ATTEMPTS` | int | `5` | no | Publish retries before `dispatch_failed`; must be **≥ 1**. |
+| `DISPATCH_STREAM_MAX_POOL_SIZE` | uint64 | `2` | no | Watch-client pool size; must be **1–10**. |
+| `DISPATCH_STREAM_MONGODB_RESUME_TOKEN_PATH` | string | *(empty)* | no | File path for change-stream resume token; empty disables persistence. |
+| `JOB_TOPICS_CONFIG_PATH` | string | `config/job-topics.yaml` | no | Job name → topic YAML manifest; used by **`cmd/jobs-server`**. |
+
+\* `PULSAR_SERVICE_URL` is required only when loading `PulsarConfig` (dispatcher).
 
 ## Validation rules
 
@@ -37,8 +47,15 @@ if err := mc.Validate(); err != nil {
 | `MONGODB_TIMEOUT` ≥ 1 second | Very short timeouts tend to fail connects under load. |
 | `MONGODB_MAX_POOL_SIZE` ≤ 1000 | Conservative cap aligned with typical driver/ops limits. |
 | `APP_PORT` is numeric and in **1024–65535** | Avoids privileged ports and invalid listen addresses. |
+| `PULSAR_SERVICE_URL` starts with `pulsar://` or `pulsar+ssl://` | Matches Pulsar client URI expectations. |
+| `PULSAR_SUBSCRIPTION_NAME` non-empty | Subscription must be named for Shared consumers. |
+| `DISPATCH_POLL_INTERVAL` ≥ 100ms | Avoids tight poll loops. |
+| `DISPATCH_POLL_BATCH_SIZE` ≥ 1 | Batch must fetch at least one job. |
+| `DISPATCH_MAX_ATTEMPTS` ≥ 1 | At least one publish attempt before failure. |
+| `DISPATCH_STREAM_MAX_POOL_SIZE` in **1–10** | Bounds dedicated watch-client pool. |
+| `JOB_TOPICS_CONFIG_PATH` non-empty | Enqueue needs a topic manifest path. |
 
-[`MongoConfig.Validate`](./validation.go) may return multiple errors joined with [`errors.Join`](https://pkg.go.dev/errors#Join).
+[`MongoConfig.Validate`](./validation.go), [`PulsarConfig.Validate`](./validation.go), [`MongoDispatchWorkerConfig.Validate`](./validation.go), and [`JobTopicsConfig.Validate`](./validation.go) may return multiple errors joined with [`errors.Join`](https://pkg.go.dev/errors#Join).
 
 ## Error handling
 

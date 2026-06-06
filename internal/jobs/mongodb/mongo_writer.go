@@ -112,7 +112,7 @@ func (w *MongoJobsWriter) ClearJobExecutionTimestamps(ctx context.Context, jobID
 }
 
 // InsertJobs bulk-inserts job metadata documents.
-func (w *MongoJobsWriter) InsertJobs(ctx context.Context, jobs []*JobMetadataModel) (int, error) {
+func (w *MongoJobsWriter) InsertJobs(ctx context.Context, jobs []*metadata.JobMetadataModel) (int, error) {
 	if len(jobs) == 0 {
 		return 0, nil
 	}
@@ -130,7 +130,7 @@ func (w *MongoJobsWriter) InsertJobs(ctx context.Context, jobs []*JobMetadataMod
 }
 
 // InsertLogs bulk-inserts job log documents.
-func (w *MongoJobsWriter) InsertLogs(ctx context.Context, logs []JobLog) (int, error) {
+func (w *MongoJobsWriter) InsertLogs(ctx context.Context, logs []metadata.JobLog) (int, error) {
 	if len(logs) == 0 {
 		return 0, nil
 	}

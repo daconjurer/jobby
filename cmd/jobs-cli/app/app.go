@@ -4,7 +4,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/jobs/mongodb"
 	"github.com/daconjurer/jobby/internal/jobs/service"
 )
 
@@ -18,12 +18,12 @@ const (
 // App holds shared CLI runtime state for subcommands.
 type App struct {
 	Service *service.MetadataService
-	Writer  *metadata.MongoJobsWriter
+	Writer  *mongodb.MongoJobsWriter
 	Out     io.Writer
 	Format  OutputFormat
 }
 
-func New(svc *service.MetadataService, writer *metadata.MongoJobsWriter) *App {
+func New(svc *service.MetadataService, writer *mongodb.MongoJobsWriter) *App {
 	return &App{
 		Service: svc,
 		Writer:  writer,

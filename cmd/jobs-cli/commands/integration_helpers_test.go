@@ -12,13 +12,14 @@ import (
 
 	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/jobs/mongodb"
 	"github.com/daconjurer/jobby/internal/jobs/service"
 	"github.com/spf13/cobra"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-func integrationMongoConfig(tb testing.TB) metadata.MongoConfig {
+func integrationMongoConfig(tb testing.TB) mongodb.MongoConfig {
 	tb.Helper()
 	if testing.Short() {
 		tb.Skip("skipping integration test (-short)")
@@ -39,7 +40,7 @@ func integrationMongoConfig(tb testing.TB) metadata.MongoConfig {
 	if logsColl == "" {
 		logsColl = "job_logs"
 	}
-	return metadata.MongoConfig{
+	return mongodb.MongoConfig{
 		URI:                uri,
 		Database:           db,
 		CollectionMetadata: metaColl,
@@ -55,7 +56,7 @@ func prepareIntegrationApp(t *testing.T) (*app.App, func()) {
 	cfg := integrationMongoConfig(t)
 	ctx := context.Background()
 
-	reader, writer, client, err := metadata.OpenMongoJobs(ctx, cfg)
+	reader, writer, client, err := mongodb.OpenMongoJobs(ctx, cfg)
 	if err != nil {
 		t.Fatalf("OpenMongoJobs: %v", err)
 	}
@@ -75,7 +76,7 @@ func prepareIntegrationApp(t *testing.T) (*app.App, func()) {
 	return application, cleanup
 }
 
-func clearJobCollections(ctx context.Context, db *mongo.Database, cfg metadata.MongoConfig) error {
+func clearJobCollections(ctx context.Context, db *mongo.Database, cfg mongodb.MongoConfig) error {
 	meta := db.Collection(cfg.CollectionMetadata)
 	logs := db.Collection(cfg.CollectionLogs)
 	if _, err := meta.DeleteMany(ctx, bson.M{}); err != nil {
@@ -98,6 +99,17 @@ func runCLICommand(t *testing.T, application *app.App, setup func(*testing.T, *a
 		t.Fatalf("command failed: %v (output=%q)", err, buf.String())
 	}
 	return buf.Bytes()
+}
+
+func markJobRunningForTest(t *testing.T, application *app.App, jobID string) {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	running := metadata.JobStatusRunning
+	patch := metadata.UpdateJob{Status: &running, StartedAt: &now}
+	if err := application.Writer.Update(ctx, jobID, patch); err != nil {
+		t.Fatalf("mark job running: %v", err)
+	}
 }
 
 func runCLICommandExpectError(t *testing.T, application *app.App, setup func(*testing.T, *app.App) *cobra.Command) error {

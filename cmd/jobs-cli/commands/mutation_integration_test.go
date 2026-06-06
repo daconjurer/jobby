@@ -36,8 +36,8 @@ func TestIntegration_Enqueue_and_Get_roundTrip(t *testing.T) {
 	if created.JobID == "" || created.Name != "integration-cli-job" {
 		t.Fatalf("unexpected created job: %+v", created)
 	}
-	if created.Status != metadata.JobStatusPending {
-		t.Fatalf("status=%s want pending", created.Status)
+	if created.Status != metadata.JobStatusPendingDispatch {
+		t.Fatalf("status=%s want pending_dispatch", created.Status)
 	}
 	if created.Priority != 7 {
 		t.Fatalf("priority=%d want 7", created.Priority)
@@ -102,6 +102,8 @@ func TestIntegration_Fail_cancel_retry_flow(t *testing.T) {
 		t.Fatalf("decode create: %v", err)
 	}
 
+	markJobRunningForTest(t, application, created.JobID)
+
 	runCLICommand(t, application, func(t *testing.T, a *app.App) *cobra.Command {
 		cmd := NewFailCmd(a)
 		cmd.SetArgs([]string{created.JobID, "--error=boom"})
@@ -135,8 +137,8 @@ func TestIntegration_Fail_cancel_retry_flow(t *testing.T) {
 	if err := json.Unmarshal(getOut, &got); err != nil {
 		t.Fatalf("decode get: %v", err)
 	}
-	if got.Status != metadata.JobStatusPending {
-		t.Fatalf("after retry status=%s want pending", got.Status)
+	if got.Status != metadata.JobStatusPendingDispatch {
+		t.Fatalf("after retry status=%s want pending_dispatch", got.Status)
 	}
 	if got.RetryCount < 1 {
 		t.Fatalf("retryCount=%d want at least 1", got.RetryCount)

@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/jobs/mongodb"
 	"github.com/daconjurer/jobby/internal/jobs/service"
 )
 
 // Bootstrap connects to MongoDB, constructs MetadataService, and returns a cleanup function.
-func Bootstrap(ctx context.Context, cfg metadata.MongoConfig) (*App, func(), error) {
-	reader, writer, client, err := metadata.OpenMongoJobs(ctx, cfg)
+func Bootstrap(ctx context.Context, cfg mongodb.MongoConfig) (*App, func(), error) {
+	reader, writer, client, err := mongodb.OpenMongoJobs(ctx, cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("connect mongodb jobs persistence: %w", err)
 	}

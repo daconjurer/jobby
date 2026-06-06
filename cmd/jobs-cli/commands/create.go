@@ -71,6 +71,8 @@ func RunCreate(ctx context.Context, a *app.App, input createInput) error {
 	opts := service.CreateJobOptions{
 		Tags:     input.Tags,
 		Metadata: meta,
+		// Satisfies pending_dispatch validation for metadata-only CLI creates.
+		Topic: "persistent://public/default/cli/unassigned",
 	}
 	if input.PrioritySet {
 		opts.Priority = &input.Priority
