@@ -33,8 +33,8 @@ The **`migrate`** service in [compose.yml](../compose.yml) runs after MongoDB is
 
 ```bash
 cp .env.example .env   # if you have not already
-docker compose down -v   # fresh volume
-docker compose up -d     # mongodb → migrate → jobs-server
+task mongo-reset       # fresh volume + replica key (or: docker compose down -v)
+task docker-up         # mongodb → migrate → jobs-server + jobs-dispatcher (+ pulsar)
 docker compose logs migrate
 curl -s http://localhost:3001/health
 ```

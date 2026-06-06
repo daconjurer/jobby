@@ -4,18 +4,18 @@ import (
 	"fmt"
 
 	"github.com/daconjurer/jobby/internal/config"
-	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/jobs/mongodb"
 )
 
-func loadMongoMetadataConfig() (metadata.MongoConfig, error) {
+func loadMongoMetadataConfig() (mongodb.MongoConfig, error) {
 	var mc config.MongoConfig
 	if err := config.LoadInto(&mc); err != nil {
-		return metadata.MongoConfig{}, fmt.Errorf("parsing mongo config: %w", err)
+		return mongodb.MongoConfig{}, fmt.Errorf("parsing mongo config: %w", err)
 	}
 	if err := mc.Validate(); err != nil {
-		return metadata.MongoConfig{}, fmt.Errorf("validating mongo config: %w", err)
+		return mongodb.MongoConfig{}, fmt.Errorf("validating mongo config: %w", err)
 	}
-	return metadata.MongoConfig{
+	return mongodb.MongoConfig{
 		URI:                mc.URI,
 		Database:           mc.Database,
 		CollectionMetadata: mc.CollectionMetadata,

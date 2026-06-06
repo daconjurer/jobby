@@ -1,4 +1,4 @@
-package metadata
+package mongodb
 
 import (
 	"context"
@@ -93,6 +93,29 @@ func OpenMongoJobs(ctx context.Context, cfg MongoConfig) (*MongoJobsReader, *Mon
 	return reader, writer, client, nil
 }
 
+// OpenMongoWatchClient connects with a dedicated small pool for change stream watching.
+func OpenMongoWatchClient(ctx context.Context, cfg MongoConfig, maxPoolSize uint64) (*mongo.Client, *mongo.Collection, error) {
+	if maxPoolSize < 1 {
+		maxPoolSize = 2
+	}
+	clientOpts := options.Client().
+		ApplyURI(cfg.URI).
+		SetTimeout(cfg.Timeout).
+		SetMaxPoolSize(maxPoolSize).
+		SetMinPoolSize(0)
+
+	client, err := mongo.Connect(clientOpts)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to connect watch MongoDB client: %w", err)
+	}
+	if err := client.Ping(ctx, nil); err != nil {
+		_ = client.Disconnect(ctx)
+		return nil, nil, fmt.Errorf("failed to ping watch MongoDB client: %w", err)
+	}
+	coll := client.Database(cfg.Database).Collection(cfg.CollectionMetadata)
+	return client, coll, nil
+}
+
 // ensureJobsIndexes checks that expected index names exist. Missing indexes are logged but do not fail startup.
 func ensureJobsIndexes(ctx context.Context, metadataColl, logsColl *mongo.Collection) (allPresent bool, err error) {
 	metadataRequired := []string{
@@ -103,6 +126,7 @@ func ensureJobsIndexes(ctx context.Context, metadataColl, logsColl *mongo.Collec
 		"idx_tags",
 		"idx_name_status",
 		"idx_status_priority_created",
+		"idx_pending_dispatch",
 	}
 	metaOK, err := verifyRequiredIndexesPresent(ctx, metadataColl, metadataRequired)
 	if err != nil {

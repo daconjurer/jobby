@@ -26,6 +26,11 @@ tasks:
     cmds:
       - go build -o bin/jobs-server ./cmd/jobs-server
 
+  build-jobs-dispatcher:
+    desc: Build cmd/jobs-dispatcher into bin/jobs-dispatcher
+    cmds:
+      - go build -o bin/jobs-dispatcher ./cmd/jobs-dispatcher
+
   build-jobs-cli:
     desc: Build cmd/jobs-cli into bin/jobs-cli
     cmds:
@@ -56,6 +61,11 @@ tasks:
     desc: Run cmd/jobs-server with go run
     cmds:
       - go run ./cmd/jobs-server
+
+  run-jobs-dispatcher:
+    desc: Run cmd/jobs-dispatcher with go run (needs MongoDB + Pulsar)
+    cmds:
+      - go run ./cmd/jobs-dispatcher
 
   run-jobs-cli:
     desc: Run cmd/jobs-cli with go run
@@ -145,9 +155,20 @@ tasks:
       - rm -f {{ .COVERAGE_OUT }} {{ .COVERAGE_UNIT_OUT }} {{ .COVERAGE_INTEGRATION_OUT }} {{ .COVERAGE_ALL_OUT }}
 
   # --- Docker Compose ---
-  docker-up:
-    desc: Start full stack (mongodb, migrate, jobs-server)
+  mongo-replica-key:
+    desc: Ensure config/mongodb-replica.key exists for local Compose (creates if missing)
     cmds:
+      - ./docker/ensure-mongodb-replica-key.sh
+
+  mongo-replica-key-regenerate:
+    desc: Regenerate config/mongodb-replica.key (use after docker-clean/mongo-reset if Mongo used an old key)
+    cmds:
+      - ./docker/ensure-mongodb-replica-key.sh --force
+
+  docker-up:
+    desc: Start full stack (mongodb, migrate, jobs-server, jobs-dispatcher)
+    cmds:
+      - task: mongo-replica-key
       - docker compose up -d
 
   docker-down:
@@ -177,16 +198,27 @@ tasks:
     cmds:
       - docker compose logs -f jobs-server
 
+  jobs-dispatcher-build:
+    desc: Build the jobby-jobs-dispatcher Docker image
+    cmds:
+      - docker build -f Dockerfile.jobs-dispatcher -t jobby-jobs-dispatcher .
+
+  jobs-dispatcher-logs:
+    desc: Follow jobs-dispatcher container logs
+    cmds:
+      - docker compose logs -f jobs-dispatcher
+
   migrate-up:
     desc: Run schema migrations (requires healthy mongodb)
     cmds:
       - docker compose up migrate
 
   mongo-up:
-    desc: Start MongoDB and run migrate once
+    desc: Start MongoDB replica set and run migrate once
     cmds:
-      - docker compose up -d mongodb
-      - docker compose up -d migrate
+      - task: mongo-replica-key
+      - docker compose up -d mongodb mongo-init
+      - docker compose up migrate
 
   mongo-down:
     cmds:
@@ -201,8 +233,10 @@ tasks:
       - docker compose exec mongodb mongosh -u jobby_app -p jobby_app_pass jobby
 
   mongo-reset:
+    desc: Wipe MongoDB volume, regenerate replica key, and start mongodb (then run mongo-up for rs0 + migrate)
     cmds:
       - docker compose down mongodb -v
+      - task: mongo-replica-key-regenerate
       - docker compose up -d mongodb
 
   # --- Dev -----------------------------------------------------------------------------

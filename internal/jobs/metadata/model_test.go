@@ -21,8 +21,8 @@ func TestNewJobMetadata(t *testing.T) {
 		if job.Name != name {
 			t.Errorf("expected name %s, got %s", name, job.Name)
 		}
-		if job.Status != JobStatusPending {
-			t.Errorf("expected status %s, got %s", JobStatusPending, job.Status)
+		if job.Status != JobStatusPendingDispatch {
+			t.Errorf("expected status %s, got %s", JobStatusPendingDispatch, job.Status)
 		}
 		if job.Priority != 5 {
 			t.Errorf("expected priority 5, got %d", job.Priority)
@@ -128,11 +128,12 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name: "valid pending job",
+			name: "valid pending_dispatch job",
 			job: &JobMetadataModel{
 				JobID:      "123e4567-e89b-12d3-a456-426614174000",
 				Name:       "test-job",
-				Status:     JobStatusPending,
+				Status:     JobStatusPendingDispatch,
+				Topic:      "persistent://public/default/jobs-test",
 				Priority:   5,
 				CreatedAt:  time.Now(),
 				RetryCount: 0,
@@ -146,7 +147,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			name: "missing jobId",
 			job: &JobMetadataModel{
 				Name:      "test-job",
-				Status:    JobStatusPending,
+				Status:    JobStatusPendingDispatch,
 				Priority:  5,
 				CreatedAt: time.Now(),
 			},
@@ -158,7 +159,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			job: &JobMetadataModel{
 				JobID:     "invalid-id",
 				Name:      "test-job",
-				Status:    JobStatusPending,
+				Status:    JobStatusPendingDispatch,
 				Priority:  5,
 				CreatedAt: time.Now(),
 			},
@@ -169,7 +170,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			name: "missing name",
 			job: &JobMetadataModel{
 				JobID:     "123e4567-e89b-12d3-a456-426614174000",
-				Status:    JobStatusPending,
+				Status:    JobStatusPendingDispatch,
 				Priority:  5,
 				CreatedAt: time.Now(),
 			},
@@ -181,7 +182,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			job: &JobMetadataModel{
 				JobID:     "123e4567-e89b-12d3-a456-426614174000",
 				Name:      string(make([]byte, 101)),
-				Status:    JobStatusPending,
+				Status:    JobStatusPendingDispatch,
 				Priority:  5,
 				CreatedAt: time.Now(),
 			},
@@ -205,7 +206,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			job: &JobMetadataModel{
 				JobID:     "123e4567-e89b-12d3-a456-426614174000",
 				Name:      "test-job",
-				Status:    JobStatusPending,
+				Status:    JobStatusPendingDispatch,
 				Priority:  -1,
 				CreatedAt: time.Now(),
 			},
@@ -217,7 +218,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			job: &JobMetadataModel{
 				JobID:     "123e4567-e89b-12d3-a456-426614174000",
 				Name:      "test-job",
-				Status:    JobStatusPending,
+				Status:    JobStatusPendingDispatch,
 				Priority:  11,
 				CreatedAt: time.Now(),
 			},
@@ -229,7 +230,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			job: &JobMetadataModel{
 				JobID:    "123e4567-e89b-12d3-a456-426614174000",
 				Name:     "test-job",
-				Status:   JobStatusPending,
+				Status:   JobStatusPendingDispatch,
 				Priority: 5,
 			},
 			wantErr: true,
@@ -240,7 +241,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			job: &JobMetadataModel{
 				JobID:      "123e4567-e89b-12d3-a456-426614174000",
 				Name:       "test-job",
-				Status:     JobStatusPending,
+				Status:     JobStatusPendingDispatch,
 				Priority:   5,
 				CreatedAt:  time.Now(),
 				RetryCount: -1,
@@ -262,15 +263,19 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 		},
 		{
 			name: "completed job without completedAt",
-			job: &JobMetadataModel{
-				JobID:     "123e4567-e89b-12d3-a456-426614174000",
-				Name:      "test-job",
-				Status:    JobStatusCompleted,
-				Priority:  5,
-				CreatedAt: time.Now(),
-			},
+			job: func() *JobMetadataModel {
+				started := time.Now()
+				return &JobMetadataModel{
+					JobID:     "123e4567-e89b-12d3-a456-426614174000",
+					Name:      "test-job",
+					Status:    JobStatusCompleted,
+					Priority:  5,
+					CreatedAt: time.Now(),
+					StartedAt: &started,
+				}
+			}(),
 			wantErr: true,
-			errMsg:  "terminal status job must have completedAt timestamp",
+			errMsg:  "completed or cancelled job must have completedAt timestamp",
 		},
 		{
 			name: "failed job without error message",
@@ -321,15 +326,15 @@ func TestJobMetadataModel_SetStatus(t *testing.T) {
 		checkComplete bool
 	}{
 		{
-			name:          "pending to running",
-			initialStatus: JobStatusPending,
+			name:          "dispatched to running",
+			initialStatus: JobStatusDispatched,
 			targetStatus:  JobStatusRunning,
 			wantErr:       false,
 			checkStarted:  true,
 		},
 		{
-			name:          "pending to cancelled",
-			initialStatus: JobStatusPending,
+			name:          "pending_dispatch to cancelled",
+			initialStatus: JobStatusPendingDispatch,
 			targetStatus:  JobStatusCancelled,
 			wantErr:       false,
 			checkComplete: true,
@@ -356,8 +361,8 @@ func TestJobMetadataModel_SetStatus(t *testing.T) {
 			checkComplete: true,
 		},
 		{
-			name:          "pending to completed (invalid)",
-			initialStatus: JobStatusPending,
+			name:          "pending_dispatch to completed (invalid)",
+			initialStatus: JobStatusPendingDispatch,
 			targetStatus:  JobStatusCompleted,
 			wantErr:       true,
 		},

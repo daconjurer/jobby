@@ -20,7 +20,7 @@ type bogusJobMeta struct{}
 
 func (bogusJobMeta) GetJobID() string                    { return "20000000-0000-0000-0000-000000000001" }
 func (bogusJobMeta) GetName() string                     { return "bogus" }
-func (bogusJobMeta) GetStatus() JobStatus                { return JobStatusPending }
+func (bogusJobMeta) GetStatus() JobStatus                { return JobStatusPendingDispatch }
 func (bogusJobMeta) GetPriority() int                    { return 5 }
 func (bogusJobMeta) GetCreatedAt() time.Time             { return time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC) }
 func (bogusJobMeta) GetStartedAt() *time.Time            { return nil }
@@ -180,8 +180,8 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		if got.GetName() != job.Name {
 			t.Errorf("Name = %q, want %q", got.GetName(), job.Name)
 		}
-		if got.GetStatus() != JobStatusPending {
-			t.Errorf("Status = %s, want %s", got.GetStatus(), JobStatusPending)
+		if got.GetStatus() != JobStatusPendingDispatch {
+			t.Errorf("Status = %s, want %s", got.GetStatus(), JobStatusPendingDispatch)
 		}
 	})
 

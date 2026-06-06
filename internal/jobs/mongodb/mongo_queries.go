@@ -1,10 +1,11 @@
-package metadata
+package mongodb
 
 import (
+	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-func buildListQuery(filter ListFilter) bson.M {
+func buildListQuery(filter metadata.ListFilter) bson.M {
 	query := bson.M{}
 
 	if len(filter.Names) > 0 {
@@ -44,7 +45,7 @@ func buildListQuery(filter ListFilter) bson.M {
 	return query
 }
 
-func buildLogsQuery(jobID string, filter LogFilter) bson.M {
+func buildLogsQuery(jobID string, filter metadata.LogFilter) bson.M {
 	query := bson.M{"jobId": jobID}
 
 	if len(filter.Levels) > 0 {

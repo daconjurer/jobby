@@ -19,6 +19,20 @@ type PulsarConfig struct {
 	SubscriptionName string `env:"PULSAR_SUBSCRIPTION_NAME" envDefault:"jobber"`
 }
 
+// MongoDispatchWorkerConfig holds change-stream dispatch worker settings.
+type MongoDispatchWorkerConfig struct {
+	PollInterval                 time.Duration `env:"DISPATCH_POLL_INTERVAL" envDefault:"5s"`
+	BatchSize                    int           `env:"DISPATCH_POLL_BATCH_SIZE" envDefault:"50"`
+	MaxAttempts                  int           `env:"DISPATCH_MAX_ATTEMPTS" envDefault:"5"`
+	StreamMaxPoolSize            uint64        `env:"DISPATCH_STREAM_MAX_POOL_SIZE" envDefault:"2"`
+	StreamMongoDBResumeTokenPath string        `env:"DISPATCH_STREAM_MONGODB_RESUME_TOKEN_PATH" envDefault:""`
+}
+
+// JobTopicsConfig holds the path to the job name → topic YAML manifest.
+type JobTopicsConfig struct {
+	ConfigPath string `env:"JOB_TOPICS_CONFIG_PATH" envDefault:"config/job-topics.yaml"`
+}
+
 // MongoConfig holds MongoDB connection and pool settings loaded from environment variables.
 type MongoConfig struct {
 	URI                string        `env:"MONGODB_URI,required,notEmpty"`

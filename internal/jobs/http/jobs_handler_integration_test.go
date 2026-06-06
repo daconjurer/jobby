@@ -1,6 +1,6 @@
 //go:build integration
 
-package handler
+package http
 
 import (
 	"bytes"
@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/jobs/mongodb"
+	"github.com/daconjurer/jobby/internal/jobs/pulsar"
 	"github.com/daconjurer/jobby/internal/jobs/service"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -29,7 +31,7 @@ import (
 // Optional (defaults match cmd/jobs-server and .env.example): MONGODB_DATABASE, MONGODB_COLLECTION_METADATA,
 // MONGODB_COLLECTION_LOGS.
 //
-// Database lifecycle matches internal/jobs/metadata/mongo_integration_test.go: collections are cleared
+// Database lifecycle matches internal/jobs/mongodb/mongo_integration_test.go: collections are cleared
 // before each subtest and again on teardown so runs stay idempotent.
 
 func TestMain(m *testing.M) {
@@ -37,7 +39,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func integrationMongoEnv(tb testing.TB) metadata.MongoConfig {
+func integrationMongoEnv(tb testing.TB) mongodb.MongoConfig {
 	tb.Helper()
 	if testing.Short() {
 		tb.Skip("skipping integration test (-short)")
@@ -58,7 +60,7 @@ func integrationMongoEnv(tb testing.TB) metadata.MongoConfig {
 	if logsColl == "" {
 		logsColl = "job_logs"
 	}
-	return metadata.MongoConfig{
+	return mongodb.MongoConfig{
 		URI:                uri,
 		Database:           db,
 		CollectionMetadata: metaColl,
@@ -69,7 +71,7 @@ func integrationMongoEnv(tb testing.TB) metadata.MongoConfig {
 	}
 }
 
-func clearJobCollections(ctx context.Context, db *mongo.Database, cfg metadata.MongoConfig) error {
+func clearJobCollections(ctx context.Context, db *mongo.Database, cfg mongodb.MongoConfig) error {
 	meta := db.Collection(cfg.CollectionMetadata)
 	logs := db.Collection(cfg.CollectionLogs)
 	if _, err := meta.DeleteMany(ctx, bson.M{}); err != nil {
@@ -81,22 +83,22 @@ func clearJobCollections(ctx context.Context, db *mongo.Database, cfg metadata.M
 	return nil
 }
 
-func setupIntegrationCollections(ctx context.Context, db *mongo.Database, cfg metadata.MongoConfig) error {
+func setupIntegrationCollections(ctx context.Context, db *mongo.Database, cfg mongodb.MongoConfig) error {
 	return clearJobCollections(ctx, db, cfg)
 }
 
-func teardownIntegrationCollections(ctx context.Context, db *mongo.Database, cfg metadata.MongoConfig) {
+func teardownIntegrationCollections(ctx context.Context, db *mongo.Database, cfg mongodb.MongoConfig) {
 	_ = clearJobCollections(ctx, db, cfg)
 }
 
 // prepareIntegrationMongoPersistence opens reader/writer against MongoDB, clears both collections before the test,
 // and registers teardown cleanup so writes do not leak across runs (same pattern as metadata integration tests).
-func prepareIntegrationMongoPersistence(t *testing.T) (*metadata.MongoJobsReader, *metadata.MongoJobsWriter) {
+func prepareIntegrationMongoPersistence(t *testing.T) (*mongodb.MongoJobsReader, *mongodb.MongoJobsWriter) {
 	t.Helper()
 	cfg := integrationMongoEnv(t)
 	ctx := context.Background()
 
-	reader, writer, client, err := metadata.OpenMongoJobs(ctx, cfg)
+	reader, writer, client, err := mongodb.OpenMongoJobs(ctx, cfg)
 	if err != nil {
 		t.Fatalf("OpenMongoJobs: %v", err)
 	}
@@ -115,10 +117,19 @@ func prepareIntegrationMongoPersistence(t *testing.T) (*metadata.MongoJobsReader
 	return reader, writer
 }
 
-func startJobsIntegrationServer(tb testing.TB, reader *metadata.MongoJobsReader, writer *metadata.MongoJobsWriter) (baseURL string, httpClient *http.Client) {
+func startJobsIntegrationServer(tb testing.TB, reader *mongodb.MongoJobsReader, writer *mongodb.MongoJobsWriter) (baseURL string, httpClient *http.Client) {
 	tb.Helper()
+	topicsPath := os.Getenv("JOB_TOPICS_CONFIG_PATH")
+	if topicsPath == "" {
+		topicsPath = "config/job-topics.yaml"
+	}
+	resolver, err := pulsar.NewFileTopicResolver(topicsPath)
+	if err != nil {
+		tb.Fatalf("NewFileTopicResolver: %v", err)
+	}
 	svc := service.NewMetadataService(reader, writer)
-	h := NewJobsHandler(svc)
+	enqueue := service.NewEnqueueService(svc, resolver)
+	h := NewJobsHandler(svc, enqueue)
 
 	r := gin.New()
 	apiRoutes := r.Group("/api")
@@ -191,7 +202,7 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		meta := map[string]any{"region": "eu"}
 		prio := 7
 		body := map[string]any{
-			"name":     "integration-http-job",
+			"name":     "account-lifecycle",
 			"payload":  payload,
 			"priority": prio,
 			"tags":     []string{"http", "integration"},
@@ -213,11 +224,14 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 
 		var created metadata.JobMetadataModel
 		mustDecodeJSON(t, bytes.NewReader(respBody), &created)
-		if created.JobID == "" || created.Name != "integration-http-job" {
+		if created.JobID == "" || created.Name != "account-lifecycle" {
 			t.Fatalf("unexpected created job: %+v", created)
 		}
-		if created.Status != metadata.JobStatusPending {
-			t.Fatalf("status=%s want pending", created.Status)
+		if created.Topic != "persistent://public/default/accounts/jobs" {
+			t.Fatalf("topic=%q", created.Topic)
+		}
+		if created.Status != metadata.JobStatusPendingDispatch {
+			t.Fatalf("status=%s want pending_dispatch", created.Status)
 		}
 
 		req, err := http.NewRequest(http.MethodGet, apiJobs(baseURL, "/", created.JobID), nil)
@@ -243,7 +257,7 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		reader, writer := prepareIntegrationMongoPersistence(t)
 		baseURL, client := startJobsIntegrationServer(t, reader, writer)
 
-		raw := []byte(`{"name":"x","priority":11}`)
+		raw := []byte(`{"name":"account-lifecycle","priority":11}`)
 		resp, err := client.Post(apiJobs(baseURL), "application/json", bytes.NewReader(raw))
 		if err != nil {
 			t.Fatal(err)
@@ -327,7 +341,7 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 			t.Fatalf("want empty stats total=0 got %+v", stats0)
 		}
 
-		raw := []byte(`{"name":"listed-job"}`)
+		raw := []byte(`{"name":"account-lifecycle"}`)
 		postResp, err := client.Post(apiJobs(baseURL), "application/json", bytes.NewReader(raw))
 		if err != nil {
 			t.Fatal(err)
@@ -339,7 +353,7 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		var created metadata.JobMetadataModel
 		mustDecodeJSON(t, bytes.NewReader(postBody), &created)
 
-		listResp, err := client.Get(apiJobs(baseURL) + "?status=pending")
+		listResp, err := client.Get(apiJobs(baseURL) + "?status=pending_dispatch")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -369,7 +383,7 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		statsBody1 := readBody(t, statsResp1)
 		var stats1 service.JobStats
 		mustDecodeJSON(t, bytes.NewReader(statsBody1), &stats1)
-		if stats1.Total < 1 || stats1.Pending < 1 {
+		if stats1.Total < 1 || stats1.PendingDispatch < 1 {
 			t.Fatalf("stats after enqueue: %+v", stats1)
 		}
 	})
@@ -378,7 +392,7 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		reader, writer := prepareIntegrationMongoPersistence(t)
 		baseURL, client := startJobsIntegrationServer(t, reader, writer)
 
-		raw := []byte(`{"name":"flow-job"}`)
+		raw := []byte(`{"name":"account-lifecycle"}`)
 		postResp, err := client.Post(apiJobs(baseURL), "application/json", bytes.NewReader(raw))
 		if err != nil {
 			t.Fatal(err)
@@ -435,8 +449,8 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		}
 		var got metadata.JobMetadataModel
 		mustDecodeJSON(t, bytes.NewReader(gotBody), &got)
-		if got.Status != metadata.JobStatusPending {
-			t.Fatalf("after retry status=%s want pending", got.Status)
+		if got.Status != metadata.JobStatusPendingDispatch {
+			t.Fatalf("after retry status=%s want pending_dispatch", got.Status)
 		}
 	})
 
@@ -444,7 +458,7 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		reader, writer := prepareIntegrationMongoPersistence(t)
 		baseURL, client := startJobsIntegrationServer(t, reader, writer)
 
-		postResp, err := client.Post(apiJobs(baseURL), "application/json", bytes.NewReader([]byte(`{"name":"cancel-me"}`)))
+		postResp, err := client.Post(apiJobs(baseURL), "application/json", bytes.NewReader([]byte(`{"name":"account-lifecycle"}`)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -469,7 +483,7 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		reader, writer := prepareIntegrationMongoPersistence(t)
 		baseURL, client := startJobsIntegrationServer(t, reader, writer)
 
-		postResp, err := client.Post(apiJobs(baseURL), "application/json", bytes.NewReader([]byte(`{"name":"still-pending"}`)))
+		postResp, err := client.Post(apiJobs(baseURL), "application/json", bytes.NewReader([]byte(`{"name":"account-lifecycle"}`)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -494,7 +508,7 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		reader, writer := prepareIntegrationMongoPersistence(t)
 		baseURL, client := startJobsIntegrationServer(t, reader, writer)
 
-		postResp, err := client.Post(apiJobs(baseURL), "application/json", bytes.NewReader([]byte(`{"name":"log-job"}`)))
+		postResp, err := client.Post(apiJobs(baseURL), "application/json", bytes.NewReader([]byte(`{"name":"optimisation"}`)))
 		if err != nil {
 			t.Fatal(err)
 		}

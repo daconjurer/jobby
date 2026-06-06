@@ -1,10 +1,11 @@
-package metadata
+package mongodb
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
@@ -15,10 +16,10 @@ type MongoJobsWriter struct {
 	logsCollection     *mongo.Collection
 }
 
-var _ JobsWriter = (*MongoJobsWriter)(nil)
+var _ metadata.JobsWriter = (*MongoJobsWriter)(nil)
 
 // Create inserts a new job metadata record (no domain validation).
-func (w *MongoJobsWriter) Create(ctx context.Context, job JobMetadata) error {
+func (w *MongoJobsWriter) Create(ctx context.Context, job metadata.JobMetadata) error {
 	_, err := w.metadataCollection.InsertOne(ctx, job)
 	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
@@ -31,13 +32,13 @@ func (w *MongoJobsWriter) Create(ctx context.Context, job JobMetadata) error {
 }
 
 // Update applies patch fields with a single $set (no domain validation).
-func (w *MongoJobsWriter) Update(ctx context.Context, jobID string, patch UpdateJob) error {
+func (w *MongoJobsWriter) Update(ctx context.Context, jobID string, patch metadata.UpdateJob) error {
 	setDoc, err := bsonPartialSet(&patch)
 	if err != nil {
 		return fmt.Errorf("build update job patch: %w", err)
 	}
 	if len(setDoc) == 0 {
-		return ErrEmptyUpdateJob
+		return metadata.ErrEmptyUpdateJob
 	}
 
 	filter := bson.M{"jobId": jobID}
@@ -47,7 +48,7 @@ func (w *MongoJobsWriter) Update(ctx context.Context, jobID string, patch Update
 	}
 
 	if result.MatchedCount == 0 {
-		return ErrJobNotFound
+		return metadata.ErrJobNotFound
 	}
 
 	return nil
@@ -63,7 +64,7 @@ func (w *MongoJobsWriter) Delete(ctx context.Context, jobID string) error {
 	}
 
 	if result.DeletedCount == 0 {
-		return ErrJobNotFound
+		return metadata.ErrJobNotFound
 	}
 
 	return nil
@@ -82,7 +83,7 @@ func (w *MongoJobsWriter) IncrementRetryCount(ctx context.Context, jobID string)
 	}
 
 	if result.MatchedCount == 0 {
-		return ErrJobNotFound
+		return metadata.ErrJobNotFound
 	}
 
 	return nil
@@ -104,7 +105,7 @@ func (w *MongoJobsWriter) ClearJobExecutionTimestamps(ctx context.Context, jobID
 	}
 
 	if result.MatchedCount == 0 {
-		return ErrJobNotFound
+		return metadata.ErrJobNotFound
 	}
 
 	return nil
@@ -147,7 +148,7 @@ func (w *MongoJobsWriter) InsertLogs(ctx context.Context, logs []JobLog) (int, e
 }
 
 // AddLog appends a log entry (no field validation; collection JSON schema enforces shape).
-func (w *MongoJobsWriter) AddLog(ctx context.Context, log JobLog) error {
+func (w *MongoJobsWriter) AddLog(ctx context.Context, log metadata.JobLog) error {
 	_, err := w.logsCollection.InsertOne(ctx, log)
 	if err != nil {
 		return fmt.Errorf("failed to insert log: %w", err)
@@ -166,4 +167,43 @@ func (w *MongoJobsWriter) DeleteOldLogs(ctx context.Context, olderThan time.Dura
 		return 0, fmt.Errorf("failed to delete old logs: %w", err)
 	}
 	return res.DeletedCount, nil
+}
+
+// MarkDispatchedIfPending transitions a job with matching jobId as pending_dispatch → dispatched and sets dispatchedAt.
+// Returns false when no document matched (already dispatched or terminal).
+func (w *MongoJobsWriter) MarkDispatchedIfPending(ctx context.Context, jobID string, dispatchedAt time.Time) (bool, error) {
+	filter := bson.M{
+		"jobId":  jobID,
+		"status": metadata.JobStatusPendingDispatch,
+	}
+	update := bson.M{
+		"$set": bson.M{
+			"status":       metadata.JobStatusDispatched,
+			"dispatchedAt": dispatchedAt,
+		},
+	}
+	result, err := w.metadataCollection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return false, fmt.Errorf("mark job dispatched: %w", err)
+	}
+	return result.MatchedCount > 0, nil
+}
+
+// RecordDispatchAttemptIfPending increments dispatch attempt metadata while still pending_dispatch.
+func (w *MongoJobsWriter) RecordDispatchAttemptIfPending(ctx context.Context, jobID string, attempts int, lastError string) (bool, error) {
+	filter := bson.M{
+		"jobId":  jobID,
+		"status": metadata.JobStatusPendingDispatch,
+	}
+	update := bson.M{
+		"$set": bson.M{
+			"dispatchAttempts":  attempts,
+			"dispatchLastError": lastError,
+		},
+	}
+	result, err := w.metadataCollection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return false, fmt.Errorf("record dispatch attempt: %w", err)
+	}
+	return result.MatchedCount > 0, nil
 }

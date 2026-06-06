@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/jobs/mongodb"
 )
 
 var jobsEnvMongoKeys = []string{
@@ -64,7 +64,7 @@ func TestLoadMongoMetadataConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadMongoMetadataConfig: %v", err)
 	}
-	want := metadata.MongoConfig{
+	want := mongodb.MongoConfig{
 		URI:                uri,
 		Database:           db,
 		CollectionMetadata: metaColl,

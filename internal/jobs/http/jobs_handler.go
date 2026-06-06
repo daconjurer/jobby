@@ -1,4 +1,4 @@
-package handler
+package http
 
 import (
 	"errors"
@@ -7,18 +7,20 @@ import (
 	"strconv"
 
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/jobs/pulsar"
 	"github.com/daconjurer/jobby/internal/jobs/service"
 	"github.com/gin-gonic/gin"
 )
 
 // JobsHandler handles HTTP requests for job metadata.
 type JobsHandler struct {
-	svc *service.MetadataService
+	svc     *service.MetadataService
+	enqueue *service.EnqueueService
 }
 
 // NewJobsHandler creates a new metadata handler.
-func NewJobsHandler(svc *service.MetadataService) *JobsHandler {
-	return &JobsHandler{svc: svc}
+func NewJobsHandler(svc *service.MetadataService, enqueue *service.EnqueueService) *JobsHandler {
+	return &JobsHandler{svc: svc, enqueue: enqueue}
 }
 
 // EnqueueJobRequest represents the request body for enqueuing a job.
@@ -30,8 +32,7 @@ type EnqueueJobRequest struct {
 	Metadata map[string]any `json:"metadata"`
 }
 
-// EnqueueJob handles POST /api/jobs.
-// Enqueuing logic (dispatch to workers or an external queue) is not implemented yet and will be added at a later stage.
+// EnqueueJob handles POST /api/jobs (201 with pending_dispatch; relay publishes asynchronously).
 func (h *JobsHandler) EnqueueJob(c *gin.Context) {
 	var req EnqueueJobRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -49,8 +50,12 @@ func (h *JobsHandler) EnqueueJob(c *gin.Context) {
 		Metadata: req.Metadata,
 	}
 
-	job, err := h.svc.CreateJob(c.Request.Context(), req.Name, req.Payload, options)
+	job, err := h.enqueue.Enqueue(c.Request.Context(), req.Name, req.Payload, options)
 	if err != nil {
+		if errors.Is(err, pulsar.ErrUnknownJobType) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

@@ -16,31 +16,25 @@ import (
 // - `omitempty` - Omit field if zero value
 // - `json:"fieldName"` - JSON field name for API responses
 type JobMetadataModel struct {
-	ID bson.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
+	ID          bson.ObjectID  `bson:"_id,omitempty" json:"id,omitempty"`
+	JobID       string         `bson:"jobId" json:"jobId"`
+	Name        string         `bson:"name" json:"name"`
+	Status      JobStatus      `bson:"status" json:"status"`
+	Priority    int            `bson:"priority" json:"priority"`
+	CreatedAt   time.Time      `bson:"createdAt" json:"createdAt"`
+	StartedAt   *time.Time     `bson:"startedAt,omitempty" json:"startedAt,omitempty"`
+	CompletedAt *time.Time     `bson:"completedAt,omitempty" json:"completedAt,omitempty"`
+	Payload     map[string]any `bson:"payload" json:"payload"`
+	Metadata    map[string]any `bson:"metadata" json:"metadata"`
+	Error       string         `bson:"error,omitempty" json:"error,omitempty"`
+	RetryCount  int            `bson:"retryCount" json:"retryCount"`
+	Tags        []string       `bson:"tags" json:"tags"`
 
-	JobID string `bson:"jobId" json:"jobId"`
-
-	Name string `bson:"name" json:"name"`
-
-	Status JobStatus `bson:"status" json:"status"`
-
-	Priority int `bson:"priority" json:"priority"`
-
-	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
-
-	StartedAt *time.Time `bson:"startedAt,omitempty" json:"startedAt,omitempty"`
-
-	CompletedAt *time.Time `bson:"completedAt,omitempty" json:"completedAt,omitempty"`
-
-	Payload map[string]any `bson:"payload" json:"payload"`
-
-	Metadata map[string]any `bson:"metadata" json:"metadata"`
-
-	Error string `bson:"error,omitempty" json:"error,omitempty"`
-
-	RetryCount int `bson:"retryCount" json:"retryCount"`
-
-	Tags []string `bson:"tags" json:"tags"`
+	// Dispatch phase (embedded on job_metadata; set at enqueue)
+	Topic             string     `bson:"topic,omitempty" json:"topic,omitempty"`
+	DispatchAttempts  int        `bson:"dispatchAttempts" json:"dispatchAttempts"`
+	DispatchLastError string     `bson:"dispatchLastError,omitempty" json:"dispatchLastError,omitempty"`
+	DispatchedAt      *time.Time `bson:"dispatchedAt,omitempty" json:"dispatchedAt,omitempty"`
 }
 
 var _ JobMetadata = (*JobMetadataModel)(nil)
@@ -54,15 +48,16 @@ func NewJobMetadata(jobID, name string, payload map[string]any) *JobMetadataMode
 	}
 
 	return &JobMetadataModel{
-		JobID:      jobID,
-		Name:       name,
-		Status:     JobStatusPending,
-		Priority:   5,
-		CreatedAt:  now,
-		Payload:    payload,
-		Metadata:   make(map[string]any),
-		RetryCount: 0,
-		Tags:       []string{},
+		JobID:            jobID,
+		Name:             name,
+		Status:           JobStatusPendingDispatch,
+		Priority:         5,
+		CreatedAt:        now,
+		Payload:          payload,
+		Metadata:         make(map[string]any),
+		RetryCount:       0,
+		Tags:             []string{},
+		DispatchAttempts: 0,
 	}
 }
 
@@ -113,16 +108,40 @@ func (j *JobMetadataModel) Validate() error {
 		return errors.New("retryCount cannot be negative")
 	}
 
+	if j.Status.IsDispatchPhase() {
+		if j.StartedAt != nil || j.CompletedAt != nil {
+			return errors.New("dispatch phase job must not have startedAt or completedAt")
+		}
+	}
+
+	if j.Status == JobStatusPendingDispatch && j.Topic == "" {
+		return errors.New("pending_dispatch job must have topic")
+	}
+
+	if j.DispatchAttempts < 0 {
+		return errors.New("dispatchAttempts cannot be negative")
+	}
+
 	if j.Status == JobStatusRunning && j.StartedAt == nil {
 		return errors.New("running job must have startedAt timestamp")
 	}
 
-	if j.Status.IsTerminal() && j.CompletedAt == nil {
-		return errors.New("terminal status job must have completedAt timestamp")
+	if j.Status == JobStatusCompleted || j.Status == JobStatusCancelled {
+		if j.StartedAt == nil {
+			return errors.New("completed or cancelled job must have startedAt timestamp")
+		}
+		if j.CompletedAt == nil {
+			return errors.New("completed or cancelled job must have completedAt timestamp")
+		}
 	}
 
-	if j.Status == JobStatusFailed && j.Error == "" {
-		return errors.New("failed job must have error message")
+	if j.Status == JobStatusFailed {
+		if j.CompletedAt == nil {
+			return errors.New("failed job must have completedAt timestamp")
+		}
+		if j.Error == "" {
+			return errors.New("failed job must have error message")
+		}
 	}
 
 	return nil
@@ -143,9 +162,14 @@ func (j *JobMetadataModel) SetStatus(status JobStatus) error {
 			j.StartedAt = &now
 		}
 	case JobStatusCompleted, JobStatusFailed, JobStatusCancelled:
+		if j.StartedAt == nil {
+			j.StartedAt = &now
+		}
 		if j.CompletedAt == nil {
 			j.CompletedAt = &now
 		}
+	case JobStatusPendingDispatch, JobStatusDispatched, JobStatusDispatchFailed:
+		// dispatch phase: no execution timestamps
 	}
 
 	return nil

@@ -4,27 +4,27 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/daconjurer/jobby/internal/jobs/handler"
-	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	jobshttp "github.com/daconjurer/jobby/internal/jobs/http"
+	"github.com/daconjurer/jobby/internal/jobs/mongodb"
+	jobpulsar "github.com/daconjurer/jobby/internal/jobs/pulsar"
 	"github.com/daconjurer/jobby/internal/jobs/service"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	mongoConfig, err := loadMongoMetadataConfig()
+	cfg, err := loadConfig()
 	if err != nil {
-		log.Fatalf("Failed to load MongoDB configuration: %v", err)
+		log.Fatalf("cannot start jobs-server: %v", err)
 	}
 
-	serverCfg, err := loadServerListenConfig()
-	if err != nil {
-		log.Fatalf("Failed to load server configuration: %v", err)
-	}
-
-	reader, writer, mongoClient, err := metadata.OpenMongoJobs(ctx, mongoConfig)
+	reader, writer, mongoClient, err := mongodb.OpenMongoJobs(ctx, cfg.Mongo)
 	if err != nil {
 		log.Fatalf("Failed to connect MongoDB jobs persistence: %v", err)
 	}
@@ -35,8 +35,14 @@ func main() {
 		log.Println("warning: one or more expected indexes are missing (make sure the migrations are applied)")
 	}
 
+	topicResolver, err := jobpulsar.NewFileTopicResolver(cfg.Topics.ConfigPath)
+	if err != nil {
+		log.Fatalf("Failed to load job topics config: %v", err)
+	}
+
 	metadataSvc := service.NewMetadataService(reader, writer)
-	jobsHandler := handler.NewJobsHandler(metadataSvc)
+	enqueueSvc := service.NewEnqueueService(metadataSvc, topicResolver)
+	jobsHandler := jobshttp.NewJobsHandler(metadataSvc, enqueueSvc)
 
 	r := gin.Default()
 
@@ -60,7 +66,7 @@ func main() {
 		jobs.GET("/:id/logs", jobsHandler.GetJobLogs)
 	}
 
-	port := serverCfg.Port
+	port := cfg.Server.Port
 	log.Printf("Starting jobs service on port %s", port)
 	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)

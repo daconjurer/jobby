@@ -1,10 +1,11 @@
-package metadata
+package mongodb
 
 import (
 	"context"
 	"errors"
 	"fmt"
 
+	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -19,17 +20,17 @@ type MongoJobsReader struct {
 	IndexesPresent bool
 }
 
-var _ JobsReader = (*MongoJobsReader)(nil)
+var _ metadata.JobsReader = (*MongoJobsReader)(nil)
 
 // Get retrieves a job metadata by ID (no ID-shape validation; empty string is a normal filter).
-func (r *MongoJobsReader) Get(ctx context.Context, jobID string) (JobMetadata, error) {
+func (r *MongoJobsReader) Get(ctx context.Context, jobID string) (metadata.JobMetadata, error) {
 	filter := bson.M{"jobId": jobID}
 
-	var job JobMetadataModel
+	var job metadata.JobMetadataModel
 	err := r.metadataCollection.FindOne(ctx, filter).Decode(&job)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, ErrJobNotFound
+			return nil, metadata.ErrJobNotFound
 		}
 		return nil, fmt.Errorf("failed to get job: %w", err)
 	}
@@ -38,7 +39,7 @@ func (r *MongoJobsReader) Get(ctx context.Context, jobID string) (JobMetadata, e
 }
 
 // List retrieves job metadata with filtering and pagination.
-func (r *MongoJobsReader) List(ctx context.Context, filter ListFilter) (jobs []JobMetadata, err error) {
+func (r *MongoJobsReader) List(ctx context.Context, filter metadata.ListFilter) (jobs []metadata.JobMetadata, err error) {
 	query := buildListQuery(filter)
 
 	opts := options.Find()
@@ -73,7 +74,7 @@ func (r *MongoJobsReader) List(ctx context.Context, filter ListFilter) (jobs []J
 	}()
 
 	for cursor.Next(ctx) {
-		var job JobMetadataModel
+		var job metadata.JobMetadataModel
 		if decodeErr := cursor.Decode(&job); decodeErr != nil {
 			return nil, fmt.Errorf("failed to decode job: %w", decodeErr)
 		}
@@ -85,14 +86,14 @@ func (r *MongoJobsReader) List(ctx context.Context, filter ListFilter) (jobs []J
 	}
 
 	if jobs == nil {
-		jobs = []JobMetadata{}
+		jobs = []metadata.JobMetadata{}
 	}
 
 	return jobs, nil
 }
 
 // CountJobs counts jobs matching the list filter (Limit and Skip are ignored).
-func (r *MongoJobsReader) CountJobs(ctx context.Context, filter ListFilter) (int64, error) {
+func (r *MongoJobsReader) CountJobs(ctx context.Context, filter metadata.ListFilter) (int64, error) {
 	query := buildListQuery(filter)
 	n, err := r.metadataCollection.CountDocuments(ctx, query)
 	if err != nil {
@@ -102,9 +103,9 @@ func (r *MongoJobsReader) CountJobs(ctx context.Context, filter ListFilter) (int
 }
 
 // GetJobsByStatus lists jobs in the given status ordered by createdAt descending.
-func (r *MongoJobsReader) GetJobsByStatus(ctx context.Context, status JobStatus, limit int) ([]JobMetadata, error) {
-	f := ListFilter{
-		Statuses: []JobStatus{status},
+func (r *MongoJobsReader) GetJobsByStatus(ctx context.Context, status metadata.JobStatus, limit int) ([]metadata.JobMetadata, error) {
+	f := metadata.ListFilter{
+		Statuses: []metadata.JobStatus{status},
 		SortBy:   "createdAt",
 		SortDesc: true,
 		Limit:    limit,
@@ -112,13 +113,18 @@ func (r *MongoJobsReader) GetJobsByStatus(ctx context.Context, status JobStatus,
 	return r.List(ctx, f)
 }
 
-// GetPendingJobs lists pending jobs ordered by createdAt descending.
-func (r *MongoJobsReader) GetPendingJobs(ctx context.Context, limit int) ([]JobMetadata, error) {
-	return r.GetJobsByStatus(ctx, JobStatusPending, limit)
+// GetPendingJobs lists jobs awaiting dispatch (pending_dispatch).
+func (r *MongoJobsReader) GetPendingJobs(ctx context.Context, limit int) ([]metadata.JobMetadata, error) {
+	return r.GetJobsByStatus(ctx, metadata.JobStatusPendingDispatch, limit)
+}
+
+// GetDispatchedJobs lists jobs on the broker awaiting executor pickup.
+func (r *MongoJobsReader) GetDispatchedJobs(ctx context.Context, limit int) ([]metadata.JobMetadata, error) {
+	return r.GetJobsByStatus(ctx, metadata.JobStatusDispatched, limit)
 }
 
 // GetLogs retrieves logs for a specific job with optional filtering.
-func (r *MongoJobsReader) GetLogs(ctx context.Context, jobID string, filter LogFilter) (logs []JobLog, err error) {
+func (r *MongoJobsReader) GetLogs(ctx context.Context, jobID string, filter metadata.LogFilter) (logs []metadata.JobLog, err error) {
 	query := buildLogsQuery(jobID, filter)
 
 	opts := options.Find()
@@ -144,11 +150,11 @@ func (r *MongoJobsReader) GetLogs(ctx context.Context, jobID string, filter LogF
 	}()
 
 	for cursor.Next(ctx) {
-		var lg JobLog
-		if decodeErr := cursor.Decode(&lg); decodeErr != nil {
+		var log metadata.JobLog
+		if decodeErr := cursor.Decode(&log); decodeErr != nil {
 			return nil, fmt.Errorf("failed to decode log: %w", decodeErr)
 		}
-		logs = append(logs, lg)
+		logs = append(logs, log)
 	}
 
 	if err = cursor.Err(); err != nil {
@@ -156,20 +162,20 @@ func (r *MongoJobsReader) GetLogs(ctx context.Context, jobID string, filter LogF
 	}
 
 	if logs == nil {
-		logs = []JobLog{}
+		logs = []metadata.JobLog{}
 	}
 
 	return logs, nil
 }
 
 // GetRecentLogs returns logs for jobID newest-first, capped by limit (0 = no limit).
-func (r *MongoJobsReader) GetRecentLogs(ctx context.Context, jobID string, limit int) ([]JobLog, error) {
-	return r.GetLogs(ctx, jobID, LogFilter{Limit: limit})
+func (r *MongoJobsReader) GetRecentLogs(ctx context.Context, jobID string, limit int) ([]metadata.JobLog, error) {
+	return r.GetLogs(ctx, jobID, metadata.LogFilter{Limit: limit})
 }
 
 // GetErrorLogs returns error- and fatal-level logs for jobID, newest-first.
-func (r *MongoJobsReader) GetErrorLogs(ctx context.Context, jobID string) ([]JobLog, error) {
-	return r.GetLogs(ctx, jobID, LogFilter{
-		Levels: []LogLevel{LogLevelError, LogLevelFatal},
+func (r *MongoJobsReader) GetErrorLogs(ctx context.Context, jobID string) ([]metadata.JobLog, error) {
+	return r.GetLogs(ctx, jobID, metadata.LogFilter{
+		Levels: []metadata.LogLevel{metadata.LogLevelError, metadata.LogLevelFatal},
 	})
 }

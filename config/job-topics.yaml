@@ -1,0 +1,8 @@
+# Job name → Pulsar topic mapping (peer-reviewed; URIs must match infra/pulsar).
+topics:
+  account-lifecycle:
+    topic: persistent://public/default/accounts/jobs
+    domain: customer-management
+  optimisation:
+    topic: persistent://public/default/rnd/jobs
+    domain: research-and-development
