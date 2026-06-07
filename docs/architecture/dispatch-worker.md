@@ -1,14 +1,18 @@
 # Dispatch worker architecture
 
-Internal reference for `internal/jobs/dispatch/` — how the MongoDB **watch client** (change stream) and the **dispatch worker** (dual triggers + saga handler) fit together in **`cmd/jobs-dispatcher`**. The HTTP API in **`cmd/jobs-server`** only persists `pending_dispatch`; dispatch runs in a separate process.
+Internal reference for `internal/jobs/dispatch/` — how the MongoDB **watch client** (change stream) and the **dispatch worker** (dual triggers + saga handler) fit together via **`internal/jobs/dispatchruntime`** in **`cmd/jobs-dispatcher`**. The HTTP API in **`cmd/jobs-server`** only persists `pending_dispatch`; dispatch runs in a separate process.
 
 **Code layout**
 
 ```text
 internal/jobs/dispatch/       # orchestration + saga (transport-agnostic)
-├── worker.go, handler.go     # Worker, DispatchHandler
+├── worker.go, handler.go     # DispatchWorker, DispatchHandler
 ├── types.go                  # JobDispatchPublisher, JobDispatchHandler, JobUpdater, …
-└── (tests)
+└── (unit tests only)
+
+internal/jobs/dispatchruntime/  # composition root (wire mongo + pulsar + dispatch)
+├── config.go                 # Config, ConfigFromEnv
+└── runtime.go                # New, Run, Close
 
 internal/jobs/mongodb/        # Mongo implementations
 ├── stream.go                 # StreamWatcher (change stream consumer)
@@ -18,7 +22,9 @@ internal/jobs/mongodb/        # Mongo implementations
 
 internal/jobs/pulsar/         # Pulsar adapter (DispatchPublisher, JobProducer)
 
-cmd/jobs-dispatcher/          # wiring (main.go, worker.go)
+internal/jobs/integrationtest/  # cross-package saga integration tests
+
+cmd/jobs-dispatcher/          # env loading + dispatchruntime.New
 ```
 
 ---
@@ -29,10 +35,10 @@ The watch path uses a **separate MongoDB client** (small pool, long-lived cursor
 
 ```mermaid
 flowchart TB
-    subgraph bootstrap["jobs-dispatcher bootstrap"]
-        CFG["dispatchCfg.StreamMaxPoolSize"]
-        MONGO["mongoConfig (URI, database, collection)"]
-        TOK_CFG["dispatchCfg.StreamMongoDBResumeTokenPath"]
+    subgraph bootstrap["dispatchruntime.New"]
+        CFG["dispatchruntime.Config.Stream"]
+        MONGO["dispatchruntime.Config.Mongo"]
+        TOK_CFG["Stream.ResumeTokenPath"]
     end
 
     subgraph watch_client["Dedicated watch Mongo client"]
@@ -102,11 +108,11 @@ Replica set is required for change streams (see `docs/dev/setup.md`).
 
 ## Dispatch worker — dual triggers + saga
 
-`dispatch.Worker` starts the watch goroutine and runs a **poll fallback** on the main goroutine. Both paths call the same `Handler` (Pulsar publish + metadata status updates).
+`dispatch.DispatchWorker` starts the watch goroutine and runs a **poll fallback** on the main goroutine. Both paths call the same `Handler` (Pulsar publish + metadata status updates). **`dispatchruntime.New`** assembles the worker, Pulsar publisher, and Mongo adapters.
 
 ```mermaid
 flowchart TB
-    subgraph worker["dispatch.Worker"]
+    subgraph worker["dispatch.DispatchWorker"]
         RUN["Run(ctx)"]
         GO["go stream.Run(ctx)"]
         POLL["runPoll(ctx) — blocking loop"]
@@ -149,7 +155,7 @@ flowchart TB
         MAX -->|no| STAY
     end
 
-    subgraph deps["Dependencies wired in main"]
+    subgraph deps["Dependencies wired in dispatchruntime.New"]
         PUB_ADP["pulsar.DispatchPublisher"]
         PROD["pulsar.JobProducer"]
         META["MetadataService implements JobUpdater"]

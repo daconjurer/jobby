@@ -34,20 +34,18 @@ func main() {
 	db := mongoClient.Database(cfg.Mongo.Database)
 	metadataSvc := service.NewMetadataService(reader, writer)
 
-	dispatchWorker, err := newPulsarDispatchWorker(
+	runtime, err := newDispatchRuntime(
 		ctx,
-		cfg.Pulsar,
-		cfg.Mongo,
-		cfg.Dispatch,
+		cfg,
 		metadataSvc,
 		db.Collection(cfg.Mongo.CollectionMetadata),
 	)
 	if err != nil {
 		log.Fatalf("failed to start dispatch worker: %v", err)
 	}
-	defer dispatchWorker.Close()
+	defer func() { _ = runtime.Close() }()
 
 	log.Println("dispatch worker running (change stream + poll fallback)")
-	dispatchWorker.Run(ctx)
+	runtime.Run(ctx)
 	log.Println("dispatch worker stopped")
 }

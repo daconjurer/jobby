@@ -13,7 +13,7 @@ type WorkerConfig struct {
 	MaxAttempts  int
 }
 
-// Worker orchestrates job dispatch (Pulsar publish) using two complementary triggers.
+// DispatchWorker orchestrates job dispatch (Pulsar publish) using two complementary triggers.
 //
 // Primary — change stream (StreamRunner): started in a background goroutine and reacts
 // to new job_metadata inserts with status pending_dispatch. This path provides low
@@ -28,16 +28,16 @@ type WorkerConfig struct {
 //
 // Both triggers share one DispatchHandler; duplicate deliveries are safe because publish and
 // status updates are idempotent per job ID.
-type Worker struct {
+type DispatchWorker struct {
 	cfg     WorkerConfig
 	handler *DispatchHandler
 	pending PendingJobFetcher
 	stream  StreamRunner
 }
 
-// NewWorker wires the dual-trigger dispatch worker.
-func NewWorker(cfg WorkerConfig, handler *DispatchHandler, pending PendingJobFetcher, stream StreamRunner) *Worker {
-	return &Worker{
+// NewDispatchWorker wires the dual-trigger dispatch worker.
+func NewDispatchWorker(cfg WorkerConfig, handler *DispatchHandler, pending PendingJobFetcher, stream StreamRunner) *DispatchWorker {
+	return &DispatchWorker{
 		cfg:     cfg,
 		handler: handler,
 		pending: pending,
@@ -46,12 +46,12 @@ func NewWorker(cfg WorkerConfig, handler *DispatchHandler, pending PendingJobFet
 }
 
 // Run starts the change stream goroutine and poll loop until ctx is cancelled.
-func (w *Worker) Run(ctx context.Context) {
+func (w *DispatchWorker) Run(ctx context.Context) {
 	go w.stream.Run(ctx)
 	w.runPoll(ctx)
 }
 
-func (w *Worker) runPoll(ctx context.Context) {
+func (w *DispatchWorker) runPoll(ctx context.Context) {
 	w.pollOnce(ctx)
 
 	ticker := time.NewTicker(w.cfg.PollInterval)
@@ -67,7 +67,7 @@ func (w *Worker) runPoll(ctx context.Context) {
 	}
 }
 
-func (w *Worker) pollOnce(ctx context.Context) {
+func (w *DispatchWorker) pollOnce(ctx context.Context) {
 	jobs, err := w.pending.FetchPending(ctx, w.cfg.MaxAttempts, w.cfg.BatchSize)
 	if err != nil {
 		log.Printf("dispatch poll error: %v", err)

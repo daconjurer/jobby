@@ -19,6 +19,7 @@ import (
 	"github.com/daconjurer/jobby/internal/jobs/mongodb"
 	"github.com/daconjurer/jobby/internal/jobs/pulsar"
 	"github.com/daconjurer/jobby/internal/jobs/service"
+	"github.com/daconjurer/jobby/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -34,6 +35,22 @@ import (
 // Database lifecycle matches internal/jobs/mongodb/mongo_integration_test.go: collections are cleared
 // before each subtest and again on teardown so runs stay idempotent.
 
+func integrationMongoURI(tb testing.TB) string {
+	tb.Helper()
+	uri := os.Getenv("MONGODB_URI")
+	if uri == "" {
+		tb.Fatalf("MONGODB_URI is not set (required for integration tests; see .env and compose.yml files)")
+	}
+	if strings.Contains(uri, "localhost") && !strings.Contains(uri, "directConnection=") {
+		sep := "?"
+		if strings.Contains(uri, "?") {
+			sep = "&"
+		}
+		uri += sep + "directConnection=true"
+	}
+	return uri
+}
+
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
 	os.Exit(m.Run())
@@ -44,10 +61,7 @@ func integrationMongoEnv(tb testing.TB) mongodb.MongoConfig {
 	if testing.Short() {
 		tb.Skip("skipping integration test (-short)")
 	}
-	uri := os.Getenv("MONGODB_URI")
-	if uri == "" {
-		tb.Fatalf("MONGODB_URI is not set (required for integration tests; see .env and compose.yml files)")
-	}
+	uri := integrationMongoURI(tb)
 	db := os.Getenv("MONGODB_DATABASE")
 	if db == "" {
 		db = "jobby"
@@ -119,11 +133,7 @@ func prepareIntegrationMongoPersistence(t *testing.T) (*mongodb.MongoJobsReader,
 
 func startJobsIntegrationServer(tb testing.TB, reader *mongodb.MongoJobsReader, writer *mongodb.MongoJobsWriter) (baseURL string, httpClient *http.Client) {
 	tb.Helper()
-	topicsPath := os.Getenv("JOB_TOPICS_CONFIG_PATH")
-	if topicsPath == "" {
-		topicsPath = "config/job-topics.yaml"
-	}
-	resolver, err := pulsar.NewFileTopicResolver(topicsPath)
+	resolver, err := pulsar.NewFileTopicResolver(testutil.JobTopicsConfigPath(tb))
 	if err != nil {
 		tb.Fatalf("NewFileTopicResolver: %v", err)
 	}
@@ -283,6 +293,38 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		b := readBody(t, resp)
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Fatalf("want 400 got %d body=%s", resp.StatusCode, b)
+		}
+	})
+
+	t.Run("Enqueue_unknown_job_name", func(t *testing.T) {
+		reader, writer := prepareIntegrationMongoPersistence(t)
+		baseURL, client := startJobsIntegrationServer(t, reader, writer)
+
+		raw := []byte(`{"name":"not-a-registered-job-type","payload":{"k":"v"}}`)
+		resp, err := client.Post(apiJobs(baseURL), "application/json", bytes.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := readBody(t, resp)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("want 400 got %d body=%s", resp.StatusCode, b)
+		}
+		if errMsg := ginErrFromBody(t, b); !strings.Contains(errMsg, "unknown job type") {
+			t.Fatalf("error=%q want unknown job type mention", errMsg)
+		}
+
+		statsResp, err := client.Get(apiJobs(baseURL, "/stats"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		statsBody := readBody(t, statsResp)
+		if statsResp.StatusCode != http.StatusOK {
+			t.Fatalf("stats: %d %s", statsResp.StatusCode, statsBody)
+		}
+		var stats service.JobStats
+		mustDecodeJSON(t, bytes.NewReader(statsBody), &stats)
+		if stats.Total != 0 {
+			t.Fatalf("want no persisted jobs, stats=%+v", stats)
 		}
 	})
 

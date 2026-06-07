@@ -79,7 +79,7 @@ Apply migrations through **`003_job_dispatch_embedded`** (`task mongo-up` or `ta
 # Tests
 
 - **`task test`** — `go test ./...` (unit tests; no integration tag).
-- **`task test-integration`** — runs tests with `-tags=integration` (see [Taskfile.yml](../../Taskfile.yml)); requires MongoDB (e.g. `task mongo-up`) **and** **`MONGODB_URI`** set in the environment (see [**.env.example**](../../.env.example)).
+- **`task test-integration`** — runs tests with `-tags=integration` (see [Taskfile.yml](../../Taskfile.yml)); requires MongoDB (e.g. `task mongo-up`) **and** **`MONGODB_URI`** set in the environment (see [**.env.example**](../../.env.example)). Saga tests in **`internal/jobs/integrationtest/`** also need Pulsar (`docker compose up -d pulsar`) and **`PULSAR_SERVICE_URL`**; they skip when the broker env is unset.
 
 # jobs-cli examples
 

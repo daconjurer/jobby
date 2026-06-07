@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/daconjurer/jobby/internal/testutil"
 )
 
 const (
@@ -65,8 +67,7 @@ topics:
 }
 
 func TestFileTopicResolver_BundledConfig(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "config", "job-topics.yaml")
-	r, err := NewFileTopicResolver(path)
+	r, err := NewFileTopicResolver(testutil.JobTopicsConfigPath(t))
 	if err != nil {
 		t.Fatal(err)
 	}
