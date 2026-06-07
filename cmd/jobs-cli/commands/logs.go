@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 	"github.com/daconjurer/jobby/cmd/jobs-cli/output"
 	"github.com/spf13/cobra"
 )
@@ -14,7 +14,7 @@ type logsResponse struct {
 	Count int `json:"count"`
 }
 
-func NewLogsCmd(a *app.App) *cobra.Command {
+func NewLogsCmd(c *cli.CLI) *cobra.Command {
 	var (
 		limit  int
 		skip   int
@@ -26,7 +26,7 @@ func NewLogsCmd(a *app.App) *cobra.Command {
 		Short: "Get logs for a job",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return RunLogs(cmd.Context(), a, args[0], limit, skip, levels)
+			return RunLogs(cmd.Context(), c, args[0], limit, skip, levels)
 		},
 	}
 
@@ -37,22 +37,22 @@ func NewLogsCmd(a *app.App) *cobra.Command {
 	return cmd
 }
 
-func RunLogs(ctx context.Context, a *app.App, jobID string, limit, skip int, levels []string) error {
+func RunLogs(ctx context.Context, c *cli.CLI, jobID string, limit, skip int, levels []string) error {
 	filter, err := BuildLogFilter(limit, skip, levels)
 	if err != nil {
 		return err
 	}
 
-	logs, err := a.Service.GetJobLogs(ctx, jobID, filter)
+	logs, err := c.Service.GetJobLogs(ctx, jobID, filter)
 	if err != nil {
 		return fmt.Errorf("get job logs: %w", err)
 	}
 
-	if a.Format == app.OutputTable {
-		return output.WriteLogsTable(a.Out, logs)
+	if c.Format == cli.OutputTable {
+		return output.WriteLogsTable(c.Out, logs)
 	}
 
-	return output.WriteJSON(a.Out, logsResponse{
+	return output.WriteJSON(c.Out, logsResponse{
 		Logs:  logs,
 		Count: len(logs),
 	})

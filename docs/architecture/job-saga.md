@@ -24,8 +24,7 @@ For worker wiring (change stream, poll fallback, Compose), see [dispatch-worker.
 
 ```text
 Phase 1 — persist
-  POST /api/jobs
-    → http.JobsHandler.EnqueueJob
+  POST /api/jobs | jobs-cli create
     → service.EnqueueService.Enqueue
     → service.MetadataService.CreateJob
 

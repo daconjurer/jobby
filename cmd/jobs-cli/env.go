@@ -2,10 +2,35 @@ package main
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/daconjurer/jobby/internal/config"
 	"github.com/daconjurer/jobby/internal/jobs/mongodb"
 )
+
+// jobsCLIConfig holds configuration for the CLI process.
+type jobsCLIConfig struct {
+	Mongo  mongodb.MongoConfig
+	Topics config.JobTopicsConfig
+}
+
+func loadConfig() (jobsCLIConfig, error) {
+	var cfg jobsCLIConfig
+	var err error
+
+	if cfg.Mongo, err = loadMongoMetadataConfig(); err != nil {
+		return cfg, configLoadError("mongodb", err)
+	}
+	if cfg.Topics, err = loadJobTopicsConfig(); err != nil {
+		return cfg, configLoadError("job topics", err)
+	}
+	return cfg, nil
+}
+
+func configLoadError(section string, err error) error {
+	log.Printf("failed to load %s configuration: %v", section, err)
+	return fmt.Errorf("%s: %w", section, err)
+}
 
 func loadMongoMetadataConfig() (mongodb.MongoConfig, error) {
 	var mc config.MongoConfig
@@ -24,4 +49,15 @@ func loadMongoMetadataConfig() (mongodb.MongoConfig, error) {
 		MaxPoolSize:        mc.MaxPoolSize,
 		MinPoolSize:        mc.MinPoolSize,
 	}, nil
+}
+
+func loadJobTopicsConfig() (config.JobTopicsConfig, error) {
+	var tc config.JobTopicsConfig
+	if err := config.LoadInto(&tc); err != nil {
+		return config.JobTopicsConfig{}, fmt.Errorf("parsing job topics config: %w", err)
+	}
+	if err := tc.Validate(); err != nil {
+		return config.JobTopicsConfig{}, fmt.Errorf("validating job topics config: %w", err)
+	}
+	return tc, nil
 }

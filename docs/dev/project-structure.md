@@ -24,7 +24,8 @@ The applications of the project are defined in `cmd/`. For example:
 - **`internal/testutil`** — small test helpers (e.g. `ModuleRoot`, `JobTopicsConfigPath` for resolving `config/job-topics.yaml` from the module root).
 - **`internal/jobs/metadata/`** — jobs metadata domain: `JobMetadata` / `JobMetadataModel`, `JobLog`, `JobsReader` / `JobsWriter`, and related types. Unit tests run with `go test`.
 - **`internal/jobs/mongodb/`** — MongoDB persistence (`MongoJobsReader` / `MongoJobsWriter`, `OpenMongoJobs`, change-stream and poll helpers). Integration tests use the `integration` build tag and expect a running MongoDB (see `docs/dev/setup.md`).
-- **`internal/jobs/service/`** — **`MetadataService`** (business logic shared by **`jobs-server`** and **`jobs-cli`**); **`EnqueueService`** (topic resolution for HTTP enqueue on **`jobs-server`** only).
+- **`internal/jobs/appruntime/`** — shared bootstrap for **`jobs-server`** and **`jobs-cli`** (MongoDB + topic resolver + **`EnqueueService`**).
+- **`internal/jobs/service/`** — **`MetadataService`** (business logic shared by **`jobs-server`** and **`jobs-cli`**); **`EnqueueService`** (topic resolution for enqueue on both entrypoints).
 - **`internal/jobs/http/`** — Gin HTTP handlers for the jobs API (`JobsHandler`).
 - **`internal/jobs/dispatch/`** — async dispatch worker (change stream + poll fallback, saga orchestration). Transport-agnostic interfaces in `types.go`; unit tests only. See [dispatch-worker.md](../architecture/dispatch-worker.md).
 - **`internal/jobs/dispatchruntime/`** — composition root for the dispatch process: `New` wires Mongo watch + poll, Pulsar publish, and `DispatchHandler`/`DispatchWorker`. Used by **`cmd/jobs-dispatcher`** and saga integration tests.

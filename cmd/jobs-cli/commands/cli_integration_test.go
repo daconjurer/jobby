@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"github.com/spf13/cobra"
 )
@@ -23,12 +23,12 @@ import (
 //   - seed (dev only)                  → TestIntegration_Seed_inserts_jobs_and_logs
 
 func TestIntegration_Cancel_pending_job(t *testing.T) {
-	application, cleanup := prepareIntegrationApp(t)
+	c, cleanup := prepareIntegrationCLI(t)
 	defer cleanup()
 
-	createOut := runCLICommand(t, application, func(t *testing.T, a *app.App) *cobra.Command {
-		cmd := NewCreateCmd(a)
-		cmd.SetArgs([]string{"--name=cancel-me"})
+	createOut := runCLICommand(t, c, func(t *testing.T, c *cli.CLI) *cobra.Command {
+		cmd := NewCreateCmd(c)
+		cmd.SetArgs([]string{"--name=account-lifecycle"})
 		return cmd
 	})
 	var created metadata.JobMetadataModel
@@ -36,14 +36,14 @@ func TestIntegration_Cancel_pending_job(t *testing.T) {
 		t.Fatalf("decode create: %v", err)
 	}
 
-	runCLICommand(t, application, func(t *testing.T, a *app.App) *cobra.Command {
-		cmd := NewCancelCmd(a)
+	runCLICommand(t, c, func(t *testing.T, c *cli.CLI) *cobra.Command {
+		cmd := NewCancelCmd(c)
 		cmd.SetArgs([]string{created.JobID, "--reason=ops hold"})
 		return cmd
 	})
 
-	getOut := runCLICommand(t, application, func(t *testing.T, a *app.App) *cobra.Command {
-		cmd := NewGetCmd(a)
+	getOut := runCLICommand(t, c, func(t *testing.T, c *cli.CLI) *cobra.Command {
+		cmd := NewGetCmd(c)
 		cmd.SetArgs([]string{created.JobID})
 		return cmd
 	})
@@ -57,12 +57,12 @@ func TestIntegration_Cancel_pending_job(t *testing.T) {
 }
 
 func TestIntegration_Retry_non_failed_job(t *testing.T) {
-	application, cleanup := prepareIntegrationApp(t)
+	c, cleanup := prepareIntegrationCLI(t)
 	defer cleanup()
 
-	createOut := runCLICommand(t, application, func(t *testing.T, a *app.App) *cobra.Command {
-		cmd := NewCreateCmd(a)
-		cmd.SetArgs([]string{"--name=still-pending"})
+	createOut := runCLICommand(t, c, func(t *testing.T, c *cli.CLI) *cobra.Command {
+		cmd := NewCreateCmd(c)
+		cmd.SetArgs([]string{"--name=optimisation"})
 		return cmd
 	})
 	var created metadata.JobMetadataModel
@@ -70,8 +70,8 @@ func TestIntegration_Retry_non_failed_job(t *testing.T) {
 		t.Fatalf("decode create: %v", err)
 	}
 
-	err := runCLICommandExpectError(t, application, func(t *testing.T, a *app.App) *cobra.Command {
-		cmd := NewRetryCmd(a)
+	err := runCLICommandExpectError(t, c, func(t *testing.T, c *cli.CLI) *cobra.Command {
+		cmd := NewRetryCmd(c)
 		cmd.SetArgs([]string{created.JobID})
 		return cmd
 	})
@@ -84,11 +84,11 @@ func TestIntegration_Retry_non_failed_job(t *testing.T) {
 }
 
 func TestIntegration_Fail_not_found(t *testing.T) {
-	application, cleanup := prepareIntegrationApp(t)
+	c, cleanup := prepareIntegrationCLI(t)
 	defer cleanup()
 
-	err := runCLICommandExpectError(t, application, func(t *testing.T, a *app.App) *cobra.Command {
-		cmd := NewFailCmd(a)
+	err := runCLICommandExpectError(t, c, func(t *testing.T, c *cli.CLI) *cobra.Command {
+		cmd := NewFailCmd(c)
 		cmd.SetArgs([]string{metadata.GenerateJobID(), "--error=x"})
 		return cmd
 	})

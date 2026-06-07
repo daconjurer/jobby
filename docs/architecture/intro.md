@@ -34,7 +34,7 @@ See [job-saga.md](./job-saga.md) for the saga protocol and [dispatch-worker.md](
 | **`cmd/jobs-server`** | Gin HTTP API under `/api/jobs` via **`http.JobsHandler`** |
 | **`cmd/jobs-cli`** | Cobra CLI with the same job operations via **`service.MetadataService`** (no HTTP hop) |
 
-Both binaries bootstrap MongoDB through **`mongodb.OpenMongoJobs`** and share validation and state-transition rules. The server additionally wires **`EnqueueService`** (topic resolution) for HTTP enqueue; the CLI **`create`** command calls **`MetadataService.CreateJob`** directly (metadata-only, no topic resolution). The CLI defaults to JSON stdout for scripting; **`--output table`** formats **`list`**, **`stats`**, and **`logs`** for interactive use.
+Both binaries bootstrap MongoDB through **`mongodb.OpenMongoJobs`** (via **`internal/jobs/appruntime`**) and share validation and state-transition rules. **`EnqueueService`** (topic resolution from `config/job-topics.yaml`) backs HTTP enqueue and CLI **`create`**. The CLI defaults to JSON stdout for scripting; **`--output table`** formats **`list`**, **`stats`**, and **`logs`** for interactive use.
 
 See `docs/dev/setup.md` for local run and test workflows.
 
@@ -58,7 +58,7 @@ See `docs/dev/setup.md` for local run and test workflows.
 **`internal/jobs/service`** — application services:
 
 - `MetadataService` — CRUD and status transitions on job metadata (shared by **`jobs-server`** and **`jobs-cli`**)
-- `EnqueueService` — topic resolution + `CreateJob` for HTTP enqueue on **`jobs-server`**
+- `EnqueueService` — topic resolution + `CreateJob` for enqueue on **`jobs-server`** and **`jobs-cli create`**
 
 **`internal/jobs/http`** — Gin handlers (`JobsHandler`) for `/api/jobs/...`
 

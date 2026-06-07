@@ -20,6 +20,10 @@ var jobsEnvMongoKeys = []string{
 	"MONGODB_MIN_POOL_SIZE",
 }
 
+var jobsEnvTopicsKeys = []string{
+	"JOB_TOPICS_CONFIG_PATH",
+}
+
 func temporaryUnsetEnv(t *testing.T, keys ...string) {
 	t.Helper()
 	prev := make(map[string]string)
@@ -94,6 +98,31 @@ func TestLoadMongoMetadataConfig_ValidationFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "validating mongo config") {
 		t.Fatalf("expected validation wrap, got: %v", err)
+	}
+}
+
+func TestLoadJobTopicsConfig(t *testing.T) {
+	temporaryUnsetEnv(t, jobsEnvTopicsKeys...)
+	t.Setenv("JOB_TOPICS_CONFIG_PATH", "config/job-topics.yaml")
+
+	got, err := loadJobTopicsConfig()
+	if err != nil {
+		t.Fatalf("loadJobTopicsConfig: %v", err)
+	}
+	if got.ConfigPath != "config/job-topics.yaml" {
+		t.Fatalf("ConfigPath=%q", got.ConfigPath)
+	}
+}
+
+func TestLoadJobTopicsConfig_Default(t *testing.T) {
+	temporaryUnsetEnv(t, jobsEnvTopicsKeys...)
+
+	got, err := loadJobTopicsConfig()
+	if err != nil {
+		t.Fatalf("loadJobTopicsConfig: %v", err)
+	}
+	if got.ConfigPath != "config/job-topics.yaml" {
+		t.Fatalf("ConfigPath=%q want default", got.ConfigPath)
 	}
 }
 

@@ -5,8 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 	"github.com/daconjurer/jobby/cmd/jobs-cli/output"
+	"github.com/daconjurer/jobby/internal/jobs/pulsar"
 	"github.com/daconjurer/jobby/internal/jobs/service"
 	"github.com/spf13/cobra"
 )
@@ -22,18 +23,19 @@ type createInput struct {
 	MetadataFile string
 }
 
-func NewCreateCmd(a *app.App) *cobra.Command {
+func NewCreateCmd(c *cli.CLI) *cobra.Command {
 	var input createInput
 
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Enqueue a new job (metadata only)",
-		Long: `Create a new job record in MongoDB. Does not dispatch work to workers.
+		Short: "Enqueue a new job",
+		Long: `Create a new job record in MongoDB with resolved Pulsar topic (same path as POST /api/jobs).
+Dispatch to Pulsar runs asynchronously via jobs-dispatcher.
 
 For non-trivial JSON in shell scripts, prefer --payload-file and --metadata-file.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			input.PrioritySet = cmd.Flags().Changed("priority")
-			return RunCreate(cmd.Context(), a, input)
+			return RunCreate(cmd.Context(), c, input)
 		},
 	}
 
@@ -49,7 +51,7 @@ For non-trivial JSON in shell scripts, prefer --payload-file and --metadata-file
 	return cmd
 }
 
-func RunCreate(ctx context.Context, a *app.App, input createInput) error {
+func RunCreate(ctx context.Context, c *cli.CLI, input createInput) error {
 	if input.Name == "" {
 		return errors.New("name is required")
 	}
@@ -71,17 +73,18 @@ func RunCreate(ctx context.Context, a *app.App, input createInput) error {
 	opts := service.CreateJobOptions{
 		Tags:     input.Tags,
 		Metadata: meta,
-		// Satisfies pending_dispatch validation for metadata-only CLI creates.
-		Topic: "persistent://public/default/cli/unassigned",
 	}
 	if input.PrioritySet {
 		opts.Priority = &input.Priority
 	}
 
-	job, err := a.Service.CreateJob(ctx, input.Name, payload, opts)
+	job, err := c.Enqueue.Enqueue(ctx, input.Name, payload, opts)
 	if err != nil {
+		if errors.Is(err, pulsar.ErrUnknownJobType) {
+			return err
+		}
 		return fmt.Errorf("create job: %w", err)
 	}
 
-	return output.WriteJSON(a.Out, job)
+	return output.WriteJSON(c.Out, job)
 }

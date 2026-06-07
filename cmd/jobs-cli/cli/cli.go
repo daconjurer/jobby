@@ -1,4 +1,4 @@
-package app
+package cli
 
 import (
 	"io"
@@ -15,17 +15,20 @@ const (
 	OutputTable OutputFormat = "table"
 )
 
-// App holds shared CLI runtime state for subcommands.
-type App struct {
+// CLI holds shared runtime state for jobs-cli subcommands.
+type CLI struct {
 	Service *service.MetadataService
+	Enqueue *service.EnqueueService
 	Writer  *mongodb.MongoJobsWriter
 	Out     io.Writer
 	Format  OutputFormat
 }
 
-func New(svc *service.MetadataService, writer *mongodb.MongoJobsWriter) *App {
-	return &App{
+// New constructs CLI state wired from appruntime.Bootstrap.
+func New(svc *service.MetadataService, enqueue *service.EnqueueService, writer *mongodb.MongoJobsWriter) *CLI {
+	return &CLI{
 		Service: svc,
+		Enqueue: enqueue,
 		Writer:  writer,
 		Out:     os.Stdout,
 		Format:  OutputJSON,

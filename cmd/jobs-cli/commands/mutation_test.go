@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 )
 
 func TestCreateCommand_ValidationPriority(t *testing.T) {
-	a := app.New(nil, nil)
-	cmd := NewCreateCmd(a)
+	c := cli.New(nil, nil, nil)
+	cmd := NewCreateCmd(c)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{"--name", "x", "--priority", "11"})
@@ -25,8 +25,8 @@ func TestCreateCommand_ValidationPriority(t *testing.T) {
 }
 
 func TestCreateCommand_MissingName(t *testing.T) {
-	a := app.New(nil, nil)
-	cmd := NewCreateCmd(a)
+	c := cli.New(nil, nil, nil)
+	cmd := NewCreateCmd(c)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 
@@ -40,8 +40,8 @@ func TestCreateCommand_MissingName(t *testing.T) {
 }
 
 func TestCreateCommand_PayloadJSON(t *testing.T) {
-	a := app.New(nil, nil)
-	cmd := NewCreateCmd(a)
+	c := cli.New(nil, nil, nil)
+	cmd := NewCreateCmd(c)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{"--name", "x", "--payload", "not-json"})
@@ -56,8 +56,8 @@ func TestCreateCommand_PayloadJSON(t *testing.T) {
 }
 
 func TestFailCommand_MissingError(t *testing.T) {
-	a := app.New(nil, nil)
-	cmd := NewFailCmd(a)
+	c := cli.New(nil, nil, nil)
+	cmd := NewFailCmd(c)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{"00000000-0000-0000-0000-000000000001"})
@@ -72,7 +72,7 @@ func TestFailCommand_MissingError(t *testing.T) {
 }
 
 func TestCancelCommand_OptionalReason(t *testing.T) {
-	cmd := NewCancelCmd(app.New(nil, nil))
+	cmd := NewCancelCmd(cli.New(nil, nil, nil))
 	reasonFlag := cmd.Flags().Lookup("reason")
 	if reasonFlag == nil {
 		t.Fatal("reason flag not defined")

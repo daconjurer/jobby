@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
+	"github.com/daconjurer/jobby/internal/jobs/appruntime"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"github.com/daconjurer/jobby/internal/jobs/mongodb"
-	"github.com/daconjurer/jobby/internal/jobs/service"
+	"github.com/daconjurer/jobby/internal/testutil"
 	"github.com/spf13/cobra"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -51,29 +52,32 @@ func integrationMongoConfig(tb testing.TB) mongodb.MongoConfig {
 	}
 }
 
-func prepareIntegrationApp(t *testing.T) (*app.App, func()) {
+func prepareIntegrationCLI(t *testing.T) (*cli.CLI, func()) {
 	t.Helper()
 	cfg := integrationMongoConfig(t)
 	ctx := context.Background()
 
-	reader, writer, client, err := mongodb.OpenMongoJobs(ctx, cfg)
+	rt, cleanupRT, err := appruntime.Bootstrap(ctx, appruntime.Config{
+		Mongo:            cfg,
+		TopicsConfigPath: testutil.JobTopicsConfigPath(t),
+	})
 	if err != nil {
-		t.Fatalf("OpenMongoJobs: %v", err)
+		t.Fatalf("appruntime.Bootstrap: %v", err)
 	}
-	db := client.Database(cfg.Database)
+
+	db := rt.MongoClient.Database(cfg.Database)
 	if err := clearJobCollections(ctx, db, cfg); err != nil {
 		t.Fatalf("clear collections: %v", err)
 	}
 
-	svc := service.NewMetadataService(reader, writer)
-	application := app.New(svc, writer)
+	c := cli.New(rt.Metadata, rt.Enqueue, rt.Writer)
 
 	cleanup := func() {
 		_ = clearJobCollections(context.Background(), db, cfg)
-		_ = client.Disconnect(context.Background())
+		cleanupRT()
 	}
 
-	return application, cleanup
+	return c, cleanup
 }
 
 func clearJobCollections(ctx context.Context, db *mongo.Database, cfg mongodb.MongoConfig) error {
@@ -88,36 +92,36 @@ func clearJobCollections(ctx context.Context, db *mongo.Database, cfg mongodb.Mo
 	return nil
 }
 
-func runCLICommand(t *testing.T, application *app.App, setup func(*testing.T, *app.App) *cobra.Command) []byte {
+func runCLICommand(t *testing.T, c *cli.CLI, setup func(*testing.T, *cli.CLI) *cobra.Command) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	cmd := setup(t, application)
+	cmd := setup(t, c)
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
-	application.Out = &buf
+	c.Out = &buf
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("command failed: %v (output=%q)", err, buf.String())
 	}
 	return buf.Bytes()
 }
 
-func markJobRunningForTest(t *testing.T, application *app.App, jobID string) {
+func markJobRunningForTest(t *testing.T, c *cli.CLI, jobID string) {
 	t.Helper()
 	ctx := context.Background()
 	now := time.Now().UTC()
 	running := metadata.JobStatusRunning
 	patch := metadata.UpdateJob{Status: &running, StartedAt: &now}
-	if err := application.Writer.Update(ctx, jobID, patch); err != nil {
+	if err := c.Writer.Update(ctx, jobID, patch); err != nil {
 		t.Fatalf("mark job running: %v", err)
 	}
 }
 
-func runCLICommandExpectError(t *testing.T, application *app.App, setup func(*testing.T, *app.App) *cobra.Command) error {
+func runCLICommandExpectError(t *testing.T, c *cli.CLI, setup func(*testing.T, *cli.CLI) *cobra.Command) error {
 	t.Helper()
 	var buf bytes.Buffer
-	cmd := setup(t, application)
+	cmd := setup(t, c)
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
-	application.Out = &buf
+	c.Out = &buf
 	return cmd.Execute()
 }

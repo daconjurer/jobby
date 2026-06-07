@@ -104,7 +104,7 @@ source .env   # or export MONGODB_* manually
 go run ./cmd/jobs-cli ping
 
 # Create and inspect a job (JSON default)
-go run ./cmd/jobs-cli create --name demo --payload '{"k":"v"}' --priority 7
+go run ./cmd/jobs-cli create --name account-lifecycle --payload '{"k":"v"}' --priority 7
 go run ./cmd/jobs-cli get <jobId>
 go run ./cmd/jobs-cli list --status pending
 go run ./cmd/jobs-cli stats

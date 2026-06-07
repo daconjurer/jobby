@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 	"github.com/daconjurer/jobby/cmd/jobs-cli/output"
 	"github.com/spf13/cobra"
 )
@@ -14,7 +14,7 @@ type listResponse struct {
 	Count int `json:"count"`
 }
 
-func NewListCmd(a *app.App) *cobra.Command {
+func NewListCmd(c *cli.CLI) *cobra.Command {
 	var (
 		limit    int
 		skip     int
@@ -34,7 +34,7 @@ func NewListCmd(a *app.App) *cobra.Command {
 			if sortAsc {
 				desc = false
 			}
-			return RunList(cmd.Context(), a, limit, skip, sortBy, desc, status, tags, names)
+			return RunList(cmd.Context(), c, limit, skip, sortBy, desc, status, tags, names)
 		},
 	}
 
@@ -50,22 +50,22 @@ func NewListCmd(a *app.App) *cobra.Command {
 	return cmd
 }
 
-func RunList(ctx context.Context, a *app.App, limit, skip int, sortBy string, sortDesc bool, status string, tags, names []string) error {
+func RunList(ctx context.Context, c *cli.CLI, limit, skip int, sortBy string, sortDesc bool, status string, tags, names []string) error {
 	filter, err := BuildListFilter(limit, skip, sortBy, sortDesc, status, tags, names)
 	if err != nil {
 		return err
 	}
 
-	jobs, err := a.Service.ListJobs(ctx, filter)
+	jobs, err := c.Service.ListJobs(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("list jobs: %w", err)
 	}
 
-	if a.Format == app.OutputTable {
-		return output.WriteJobsTable(a.Out, jobs)
+	if c.Format == cli.OutputTable {
+		return output.WriteJobsTable(c.Out, jobs)
 	}
 
-	return output.WriteJSON(a.Out, listResponse{
+	return output.WriteJSON(c.Out, listResponse{
 		Jobs:  jobs,
 		Count: len(jobs),
 	})

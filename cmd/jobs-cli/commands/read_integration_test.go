@@ -8,17 +8,17 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"github.com/daconjurer/jobby/internal/jobs/service"
 	"github.com/spf13/cobra"
 )
 
 func TestIntegration_Get_not_found(t *testing.T) {
-	application, cleanup := prepareIntegrationApp(t)
+	c, cleanup := prepareIntegrationCLI(t)
 	defer cleanup()
 
-	cmd := NewGetCmd(application)
+	cmd := NewGetCmd(c)
 	cmd.SetArgs([]string{metadata.GenerateJobID()})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -33,10 +33,10 @@ func TestIntegration_Get_not_found(t *testing.T) {
 }
 
 func TestIntegration_List_invalid_status(t *testing.T) {
-	application, cleanup := prepareIntegrationApp(t)
+	c, cleanup := prepareIntegrationCLI(t)
 	defer cleanup()
 
-	cmd := NewListCmd(application)
+	cmd := NewListCmd(c)
 	cmd.SetArgs([]string{"--status=nope"})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -51,12 +51,12 @@ func TestIntegration_List_invalid_status(t *testing.T) {
 }
 
 func TestIntegration_List_filter_status_and_stats(t *testing.T) {
-	application, cleanup := prepareIntegrationApp(t)
+	c, cleanup := prepareIntegrationCLI(t)
 	defer cleanup()
 	ctx := context.Background()
 
-	statsOut := runCLICommand(t, application, func(t *testing.T, a *app.App) *cobra.Command {
-		return NewStatsCmd(a)
+	statsOut := runCLICommand(t, c, func(t *testing.T, c *cli.CLI) *cobra.Command {
+		return NewStatsCmd(c)
 	})
 	var stats0 service.JobStats
 	if err := json.Unmarshal(statsOut, &stats0); err != nil {
@@ -66,15 +66,13 @@ func TestIntegration_List_filter_status_and_stats(t *testing.T) {
 		t.Fatalf("want empty stats, got %+v", stats0)
 	}
 
-	created, err := application.Service.CreateJob(ctx, "listed-job", nil, service.CreateJobOptions{
-		Topic: "persistent://public/default/cli/unassigned",
-	})
+	created, err := c.Enqueue.Enqueue(ctx, "account-lifecycle", nil, service.CreateJobOptions{})
 	if err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
-	listOut := runCLICommand(t, application, func(t *testing.T, a *app.App) *cobra.Command {
-		cmd := NewListCmd(a)
+	listOut := runCLICommand(t, c, func(t *testing.T, c *cli.CLI) *cobra.Command {
+		cmd := NewListCmd(c)
 		cmd.SetArgs([]string{"--status=pending_dispatch"})
 		return cmd
 	})
@@ -95,8 +93,8 @@ func TestIntegration_List_filter_status_and_stats(t *testing.T) {
 		t.Fatalf("pending list missing job %+v", listWrap.Jobs)
 	}
 
-	statsOut1 := runCLICommand(t, application, func(t *testing.T, a *app.App) *cobra.Command {
-		return NewStatsCmd(a)
+	statsOut1 := runCLICommand(t, c, func(t *testing.T, c *cli.CLI) *cobra.Command {
+		return NewStatsCmd(c)
 	})
 	var stats1 service.JobStats
 	if err := json.Unmarshal(statsOut1, &stats1); err != nil {
@@ -108,11 +106,11 @@ func TestIntegration_List_filter_status_and_stats(t *testing.T) {
 }
 
 func TestIntegration_Seed_inserts_jobs_and_logs(t *testing.T) {
-	application, cleanup := prepareIntegrationApp(t)
+	c, cleanup := prepareIntegrationCLI(t)
 	defer cleanup()
 
-	seedOut := runCLICommand(t, application, func(t *testing.T, a *app.App) *cobra.Command {
-		cmd := NewSeedCmd(a)
+	seedOut := runCLICommand(t, c, func(t *testing.T, c *cli.CLI) *cobra.Command {
+		cmd := NewSeedCmd(c)
 		cmd.SetArgs([]string{"--count=5", "--seed=123", "--logs-per-job-min=1", "--logs-per-job-max=2"})
 		return cmd
 	})
@@ -130,8 +128,8 @@ func TestIntegration_Seed_inserts_jobs_and_logs(t *testing.T) {
 		t.Fatalf("logsInserted = %d, want at least 5", seedResult.LogsInserted)
 	}
 
-	statsOut := runCLICommand(t, application, func(t *testing.T, a *app.App) *cobra.Command {
-		return NewStatsCmd(a)
+	statsOut := runCLICommand(t, c, func(t *testing.T, c *cli.CLI) *cobra.Command {
+		return NewStatsCmd(c)
 	})
 	var stats service.JobStats
 	if err := json.Unmarshal(statsOut, &stats); err != nil {
@@ -143,19 +141,17 @@ func TestIntegration_Seed_inserts_jobs_and_logs(t *testing.T) {
 }
 
 func TestIntegration_Logs_levels(t *testing.T) {
-	application, cleanup := prepareIntegrationApp(t)
+	c, cleanup := prepareIntegrationCLI(t)
 	defer cleanup()
 	ctx := context.Background()
 
-	created, err := application.Service.CreateJob(ctx, "log-job", nil, service.CreateJobOptions{
-		Topic: "persistent://public/default/cli/unassigned",
-	})
+	created, err := c.Enqueue.Enqueue(ctx, "account-lifecycle", nil, service.CreateJobOptions{})
 	if err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
-	logsOut := runCLICommand(t, application, func(t *testing.T, a *app.App) *cobra.Command {
-		cmd := NewLogsCmd(a)
+	logsOut := runCLICommand(t, c, func(t *testing.T, c *cli.CLI) *cobra.Command {
+		cmd := NewLogsCmd(c)
 		cmd.SetArgs([]string{created.JobID})
 		return cmd
 	})
@@ -169,7 +165,7 @@ func TestIntegration_Logs_levels(t *testing.T) {
 		t.Fatalf("expected creation log, got %+v", logsWrap.Logs)
 	}
 
-	badCmd := NewLogsCmd(application)
+	badCmd := NewLogsCmd(c)
 	badCmd.SetArgs([]string{created.JobID, "--levels=nope"})
 	badCmd.SetOut(&bytes.Buffer{})
 	badCmd.SetErr(&bytes.Buffer{})
