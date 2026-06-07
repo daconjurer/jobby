@@ -10,16 +10,16 @@ import (
 )
 
 type recordingJobsWriter struct {
-	markDispatchedMatched      bool
-	markDispatchedErr          error
-	recordAttemptMatched       bool
-	recordAttemptErr           error
-	recordAttemptCalls         []recordAttemptCall
-	markDispatchFailedMatched  bool
-	markDispatchFailedErr      error
-	markDispatchFailedCalls    []markDispatchFailedCall
-	logs                       []metadata.JobLog
-	createErr                  error
+	markDispatchedMatched     bool
+	markDispatchedErr         error
+	recordAttemptMatched      bool
+	recordAttemptErr          error
+	recordAttemptCalls        []recordAttemptCall
+	markDispatchFailedMatched bool
+	markDispatchFailedErr     error
+	markDispatchFailedCalls   []markDispatchFailedCall
+	logs                      []metadata.JobLog
+	createErr                 error
 }
 
 type recordAttemptCall struct {
@@ -289,4 +289,3 @@ func TestMetadataService_CancelJob_RejectsTerminalStatus(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
-
