@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -25,22 +24,6 @@ import (
 
 const integrationPollInterval = 200 * time.Millisecond
 
-func integrationMongoURI(tb testing.TB) string {
-	tb.Helper()
-	uri := os.Getenv("MONGODB_URI")
-	if uri == "" {
-		tb.Fatalf("MONGODB_URI is not set (required for integration tests; see .env and compose.yml)")
-	}
-	if strings.Contains(uri, "localhost") && !strings.Contains(uri, "directConnection=") {
-		sep := "?"
-		if strings.Contains(uri, "?") {
-			sep = "&"
-		}
-		uri += sep + "directConnection=true"
-	}
-	return uri
-}
-
 func integrationMongoEnv(tb testing.TB) mongodb.MongoConfig {
 	tb.Helper()
 	if testing.Short() {
@@ -58,8 +41,12 @@ func integrationMongoEnv(tb testing.TB) mongodb.MongoConfig {
 	if logsColl == "" {
 		logsColl = "job_logs"
 	}
+	uri := os.Getenv("MONGODB_URI")
+	if uri == "" {
+		tb.Fatalf("MONGODB_URI is not set (required for integration tests; see .env.example)")
+	}
 	return mongodb.MongoConfig{
-		URI:                integrationMongoURI(tb),
+		URI:                uri,
 		Database:           db,
 		CollectionMetadata: metaColl,
 		CollectionLogs:     logsColl,
@@ -84,17 +71,32 @@ func integrationPulsarEnv(tb testing.TB) config.PulsarConfig {
 	}
 }
 
+func integrationDispatchWorkerConfig(tb testing.TB) dispatch.WorkerConfig {
+	tb.Helper()
+	return dispatch.WorkerConfig{
+		PollInterval: integrationPollInterval,
+		BatchSize:    50,
+		MaxAttempts:  5,
+	}
+}
+
 func integrationDispatchConfig(tb testing.TB) dispatchruntime.Config {
 	tb.Helper()
 	pulsarCfg := integrationPulsarEnv(tb)
 	return dispatchruntime.Config{
-		Mongo: integrationMongoEnv(tb),
-		Worker: dispatch.WorkerConfig{
-			PollInterval: integrationPollInterval,
-			BatchSize:    50,
-			MaxAttempts:  5,
-		},
+		Mongo:  integrationMongoEnv(tb),
+		Worker: integrationDispatchWorkerConfig(tb),
 		Pulsar: pulsarCfg,
+		Stream: dispatchruntime.StreamConfig{MaxPoolSize: 2},
+	}
+}
+
+// integrationDispatchConfigWithPublisher uses Mongo only; caller supplies Publisher (no live Pulsar).
+func integrationDispatchConfigWithPublisher(tb testing.TB) dispatchruntime.Config {
+	tb.Helper()
+	return dispatchruntime.Config{
+		Mongo:  integrationMongoEnv(tb),
+		Worker: integrationDispatchWorkerConfig(tb),
 		Stream: dispatchruntime.StreamConfig{MaxPoolSize: 2},
 	}
 }
@@ -221,6 +223,28 @@ func startDispatchRuntime(
 	}
 	go runtime.Run(ctx)
 	return ctx, cancel, runtime
+}
+
+func waitForMinDispatchAttempts(tb testing.TB, svc *service.MetadataService, jobID string, minAttempts int, timeout time.Duration) *metadata.JobMetadataModel {
+	tb.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		job, err := svc.GetJob(context.Background(), jobID)
+		if err == nil {
+			model := job.(*metadata.JobMetadataModel)
+			if model.DispatchAttempts >= minAttempts {
+				return model
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	job, err := svc.GetJob(context.Background(), jobID)
+	if err != nil {
+		tb.Fatalf("GetJob(%s): %v", jobID, err)
+	}
+	model := job.(*metadata.JobMetadataModel)
+	tb.Fatalf("job %s dispatchAttempts=%d want >= %d after %s", jobID, model.DispatchAttempts, minAttempts, timeout)
+	return nil
 }
 
 func waitForJobStatus(tb testing.TB, svc *service.MetadataService, jobID string, want metadata.JobStatus, timeout time.Duration) *metadata.JobMetadataModel {

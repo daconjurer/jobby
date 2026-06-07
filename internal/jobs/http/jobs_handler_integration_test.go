@@ -28,28 +28,12 @@ import (
 // Integration tests require MongoDB (for example: task mongo-up).
 // Run: task test-integration
 //
-// Required: MONGODB_URI.
+// Required: MONGODB_URI (host: replicaSet=rs0 and directConnection=true — see .env.example).
 // Optional (defaults match cmd/jobs-server and .env.example): MONGODB_DATABASE, MONGODB_COLLECTION_METADATA,
 // MONGODB_COLLECTION_LOGS.
 //
 // Database lifecycle matches internal/jobs/mongodb/mongo_integration_test.go: collections are cleared
 // before each subtest and again on teardown so runs stay idempotent.
-
-func integrationMongoURI(tb testing.TB) string {
-	tb.Helper()
-	uri := os.Getenv("MONGODB_URI")
-	if uri == "" {
-		tb.Fatalf("MONGODB_URI is not set (required for integration tests; see .env and compose.yml files)")
-	}
-	if strings.Contains(uri, "localhost") && !strings.Contains(uri, "directConnection=") {
-		sep := "?"
-		if strings.Contains(uri, "?") {
-			sep = "&"
-		}
-		uri += sep + "directConnection=true"
-	}
-	return uri
-}
 
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
@@ -61,7 +45,10 @@ func integrationMongoEnv(tb testing.TB) mongodb.MongoConfig {
 	if testing.Short() {
 		tb.Skip("skipping integration test (-short)")
 	}
-	uri := integrationMongoURI(tb)
+	uri := os.Getenv("MONGODB_URI")
+	if uri == "" {
+		tb.Fatalf("MONGODB_URI is not set (required for integration tests; see .env.example)")
+	}
 	db := os.Getenv("MONGODB_DATABASE")
 	if db == "" {
 		db = "jobby"
@@ -190,6 +177,17 @@ func readBody(tb testing.TB, resp *http.Response) []byte {
 	}
 	_ = resp.Body.Close()
 	return b
+}
+
+func markJobRunningForIntegrationTest(t *testing.T, writer *mongodb.MongoJobsWriter, jobID string) {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	running := metadata.JobStatusRunning
+	patch := metadata.UpdateJob{Status: &running, StartedAt: &now}
+	if err := writer.Update(ctx, jobID, patch); err != nil {
+		t.Fatalf("mark job running: %v", err)
+	}
 }
 
 func ginErrFromBody(tb testing.TB, body []byte) string {
@@ -445,6 +443,7 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		}
 		var created metadata.JobMetadataModel
 		mustDecodeJSON(t, bytes.NewReader(postBody), &created)
+		markJobRunningForIntegrationTest(t, writer, created.JobID)
 
 		failPayload := []byte(`{"error":"boom"}`)
 		failResp, err := client.Post(apiJobs(baseURL, "/", created.JobID, "/fail"), "application/json", bytes.NewReader(failPayload))

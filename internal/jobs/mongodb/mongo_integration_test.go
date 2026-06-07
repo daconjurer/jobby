@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -35,26 +34,10 @@ func (bogusJobMeta) GetRetryCount() int                  { return 0 }
 func (bogusJobMeta) GetTags() []string                   { return nil }
 func (bogusJobMeta) Validate() error                     { return nil }
 
-func integrationMongoURI(tb testing.TB) string {
-	tb.Helper()
-	uri := os.Getenv("MONGODB_URI")
-	if uri == "" {
-		tb.Fatalf("MONGODB_URI is not set (required for integration tests; see .env and compose.yml files)")
-	}
-	if strings.Contains(uri, "localhost") && !strings.Contains(uri, "directConnection=") {
-		sep := "?"
-		if strings.Contains(uri, "?") {
-			sep = "&"
-		}
-		uri += sep + "directConnection=true"
-	}
-	return uri
-}
-
 // Integration tests require MongoDB (for example: task mongo-up).
 // Run: task test-integration
 //
-// Required: MONGODB_URI.
+// Required: MONGODB_URI (host: replicaSet=rs0 and directConnection=true — see .env.example).
 // Optional (defaults match cmd/jobs-server and .env.example): MONGODB_DATABASE, MONGODB_COLLECTION_METADATA,
 // MONGODB_COLLECTION_LOGS.
 
@@ -63,7 +46,10 @@ func integrationMongoEnv(tb testing.TB) MongoConfig {
 	if testing.Short() {
 		tb.Skip("skipping integration test (-short)")
 	}
-	uri := integrationMongoURI(tb)
+	uri := os.Getenv("MONGODB_URI")
+	if uri == "" {
+		tb.Fatalf("MONGODB_URI is not set (required for integration tests; see .env.example)")
+	}
 	db := os.Getenv("MONGODB_DATABASE")
 	if db == "" {
 		db = "jobby"

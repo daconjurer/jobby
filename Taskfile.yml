@@ -89,7 +89,9 @@ tasks:
       - go test ./...
 
   test-integration:
-    desc: Integration tests (-tags=integration); needs MongoDB and MONGODB_URI (see docs)
+    desc: Integration tests (-tags=integration); loads .env; needs MongoDB (see docs)
+    dotenv:
+      - .env
     cmds:
       - go test {{ .INTEGRATION_TEST_FLAGS }} -v ./...
 

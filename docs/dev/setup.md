@@ -39,9 +39,9 @@ task mongo-up    # mongodb + migrate only (for host go run / integration tests)
 | Goal | Command | Mongo URI |
 |------|---------|-----------|
 | Full stack in Docker | `task docker-up` | Inline in [compose.yml](../../compose.yml) (`mongodb:27017`, `pulsar:6650`) |
-| API on host | `task mongo-up` then `task run-jobs-server` | **`MONGODB_URI`** in `.env` with **`localhost:27018`** |
+| API on host | `task mongo-up` then `task run-jobs-server` | **`MONGODB_URI`** from `.env.example` (`localhost:27018`, `replicaSet=rs0`, `directConnection=true`) |
 | Dispatch on host | `task mongo-up` + Pulsar, then `task run-jobs-dispatcher` | Same Mongo URI; **`PULSAR_SERVICE_URL`** / **`DISPATCH_*`** from `.env` |
-| Integration tests | `task mongo-up` then `task test-integration` | Same as host binary (`.env` / shell) |
+| Integration tests | `task mongo-up` then `task test-integration` | Same **`MONGODB_URI`** (Task loads `.env`) |
 
 If **`migrate`** fails, **`jobs-server`** does not start (`depends_on: service_completed_successfully`). Fix migrate logs first (`docker compose logs migrate`). For a clean database reset: `task mongo-reset` then `task mongo-up` (or `docker compose down -v`).
 
@@ -49,10 +49,21 @@ If MongoDB fails with **`security.keyFile is required`**, you are on an older vo
 
 If migrate fails with **`network … not found`**, an old **migrate** container is still bound to a removed Compose network (common after `docker network prune` or recreating only **mongodb**). Remove it and retry: `docker compose rm -f migrate && task mongo-up`. **`task mongo-up`** recreates **migrate** each run to avoid this.
 
-Copy [**.env.example**](../../.env.example) to **`.env`** before **`docker compose`** so **`COMPOSE_MONGODB_URI`** is available to the **`migrate`** service (admin URI, hostname **`mongodb`**, port **27017**). Compose loads **`.env`** automatically; the Go toolchain does not load it for **`go run`** — export variables into your shell (or use your preferred loader) before running **`cmd/jobs-server`**, **`cmd/jobs-dispatcher`**, **`cmd/jobs-cli`**, or **`task test-integration`**.
+Copy [**.env.example**](../../.env.example) to **`.env`** before **`docker compose`** so **`COMPOSE_MONGODB_URI`** is available to the **`migrate`** service (admin URI, hostname **`mongodb`**, port **27017**). Compose loads **`.env`** automatically; the Go toolchain does not load it for **`go run`** — export variables into your shell (or use your preferred loader) before running **`cmd/jobs-server`**, **`cmd/jobs-dispatcher`**, or **`cmd/jobs-cli`**. **`task test-integration`** loads **`.env`** via Task `dotenv`.
 
 - **`COMPOSE_MONGODB_URI`** — used only by the **`migrate`** service in [compose.yml](../../compose.yml).
-- **`MONGODB_URI`** — used by apps and integration tests on the host; use **`localhost`** and published port **27018** (see `.env.example`).
+- **`MONGODB_URI`** — used by host binaries and integration tests. Copy the full value from **`.env.example`**: **`localhost:27018`**, **`replicaSet=rs0`**, and **`directConnection=true`** (see below).
+
+### Host `MONGODB_URI` and the replica set
+
+Local Mongo runs as replica set **`rs0`** so change streams work (dispatch worker). **`mongo-init`** registers the member as **`mongodb:27017`** (correct inside the Compose network).
+
+From the **host**, connect through the published port **`localhost:27018`**. The URI must include:
+
+- **`replicaSet=rs0`** — driver treats the deployment as a replica set (change streams, transactions semantics).
+- **`directConnection=true`** — pin to the seed host only. Without it, the driver learns **`mongodb:27017`** from the server and tries to reach that hostname, which does not resolve on the host (`lookup mongodb: no such host`).
+
+In-container services (**`jobs-server`**, **`jobs-dispatcher`**, **`migrate`**) use **`mongodb:27017`** in [compose.yml](../../compose.yml) and do **not** need **`directConnection=true`**.
 
 Database name and collection names align with what **`migrations/001_initialize_database`** creates for that stack.
 
@@ -79,7 +90,7 @@ Apply migrations through **`003_job_dispatch_embedded`** (`task mongo-up` or `ta
 # Tests
 
 - **`task test`** — `go test ./...` (unit tests; no integration tag).
-- **`task test-integration`** — runs tests with `-tags=integration` (see [Taskfile.yml](../../Taskfile.yml)); requires MongoDB (e.g. `task mongo-up`) **and** **`MONGODB_URI`** set in the environment (see [**.env.example**](../../.env.example)). Saga tests in **`internal/jobs/integrationtest/`** also need Pulsar (`docker compose up -d pulsar`) and **`PULSAR_SERVICE_URL`**; they skip when the broker env is unset.
+- **`task test-integration`** — runs tests with `-tags=integration` (see [Taskfile.yml](../../Taskfile.yml)); loads **`.env`** automatically. Requires MongoDB (e.g. `task mongo-up`) and a host **`MONGODB_URI`** with **`replicaSet=rs0`** and **`directConnection=true`** (see [**.env.example**](../../.env.example)). Saga tests in **`internal/jobs/integrationtest/`** also need Pulsar (`docker compose up -d pulsar`) and **`PULSAR_SERVICE_URL`**; they skip when the broker env is unset.
 
 # jobs-cli examples
 

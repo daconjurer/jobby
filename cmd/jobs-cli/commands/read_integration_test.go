@@ -66,14 +66,16 @@ func TestIntegration_List_filter_status_and_stats(t *testing.T) {
 		t.Fatalf("want empty stats, got %+v", stats0)
 	}
 
-	created, err := application.Service.CreateJob(ctx, "listed-job", nil, service.CreateJobOptions{})
+	created, err := application.Service.CreateJob(ctx, "listed-job", nil, service.CreateJobOptions{
+		Topic: "persistent://public/default/cli/unassigned",
+	})
 	if err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
 	listOut := runCLICommand(t, application, func(t *testing.T, a *app.App) *cobra.Command {
 		cmd := NewListCmd(a)
-		cmd.SetArgs([]string{"--status=pending"})
+		cmd.SetArgs([]string{"--status=pending_dispatch"})
 		return cmd
 	})
 	var listWrap struct {
@@ -100,7 +102,7 @@ func TestIntegration_List_filter_status_and_stats(t *testing.T) {
 	if err := json.Unmarshal(statsOut1, &stats1); err != nil {
 		t.Fatalf("decode stats: %v", err)
 	}
-	if stats1.Total < 1 || stats1.Pending < 1 {
+	if stats1.Total < 1 || stats1.PendingDispatch < 1 {
 		t.Fatalf("stats after create: %+v", stats1)
 	}
 }
@@ -145,7 +147,9 @@ func TestIntegration_Logs_levels(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	created, err := application.Service.CreateJob(ctx, "log-job", nil, service.CreateJobOptions{})
+	created, err := application.Service.CreateJob(ctx, "log-job", nil, service.CreateJobOptions{
+		Topic: "persistent://public/default/cli/unassigned",
+	})
 	if err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}

@@ -21,7 +21,7 @@ if err := mc.Validate(); err != nil {
 | `APP_PORT` | string | — | yes | Must parse as integer **1024–65535** after load ([`ServerConfig.Validate`](./validation.go)). |
 | `MONGO_URI` | string | — | yes | Admin-privileged MongoDB URI for `cmd/migrate`; database path segment should be **`jobby`**. |
 | `MIGRATIONS_PATH` | string | `./migrations` | no | Directory of golang-migrate JSON migration files. |
-| `MONGODB_URI` | string | — | yes | Non-empty connection URI. |
+| `MONGODB_URI` | string | — | yes | Non-empty connection URI. Host dev: `localhost:27018` with `replicaSet=rs0` and `directConnection=true` (see `.env.example`). In-cluster Compose uses `mongodb:27017` without `directConnection`. |
 | `MONGODB_DATABASE` | string | — | yes | Database name. |
 | `MONGODB_COLLECTION_METADATA` | string | — | yes | Metadata collection. |
 | `MONGODB_COLLECTION_LOGS` | string | — | yes | Logs collection. |
