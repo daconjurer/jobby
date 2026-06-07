@@ -119,7 +119,9 @@ tasks:
       - go tool cover -html={{ .COVERAGE_OUT }}
 
   coverage-integration:
-    desc: Integration coverage (-tags=integration); needs MongoDB
+    desc: Integration coverage (-tags=integration); loads .env; needs MongoDB
+    dotenv:
+      - .env
     cmds:
       - echo "Generating integration-test coverage ({{ .COVERAGE_INTEGRATION_OUT }})..."
       - go test {{ .INTEGRATION_TEST_FLAGS }} -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_INTEGRATION_OUT }} ./...
@@ -128,13 +130,17 @@ tasks:
       - echo "Run 'task coverage-integration-html' to open this profile in the browser"
 
   coverage-integration-html:
+    dotenv:
+      - .env
     cmds:
       - echo "Generating integration-test coverage ({{ .COVERAGE_INTEGRATION_OUT }})..."
       - go test {{ .INTEGRATION_TEST_FLAGS }} -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_INTEGRATION_OUT }} ./...
       - go tool cover -html={{ .COVERAGE_INTEGRATION_OUT }}
 
   coverage-all:
-    desc: Merge unit + integration coverage (MongoDB required for integration part)
+    desc: Merge unit + integration coverage; loads .env (MongoDB required for integration part)
+    dotenv:
+      - .env
     cmds:
       - echo "Generating merged unit + integration coverage ({{ .COVERAGE_ALL_OUT }})..."
       - go test -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_UNIT_OUT }} ./...
@@ -145,6 +151,8 @@ tasks:
       - echo "Run 'task coverage-all-html' to open the merged report in the browser"
 
   coverage-all-html:
+    dotenv:
+      - .env
     cmds:
       - echo "Generating merged unit + integration coverage ({{ .COVERAGE_ALL_OUT }})..."
       - go test -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_UNIT_OUT }} ./...

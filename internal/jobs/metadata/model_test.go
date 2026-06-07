@@ -655,3 +655,38 @@ func TestJobMetadataModel_Age(t *testing.T) {
 func TestJobMetadataModel_InterfaceCompliance(t *testing.T) {
 	var _ JobMetadata = (*JobMetadataModel)(nil)
 }
+
+func TestAsJobModel_AcceptsModel(t *testing.T) {
+	job := NewJobMetadata("123e4567-e89b-12d3-a456-426614174000", "test-job", nil)
+
+	got, err := AsJobModel(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != job {
+		t.Fatal("expected same model pointer")
+	}
+}
+
+func TestAsJobModel_RejectsUnexpectedType(t *testing.T) {
+	_, err := AsJobModel(bogusJobMetadata{})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+type bogusJobMetadata struct{}
+
+func (bogusJobMetadata) GetJobID() string            { return "job-1" }
+func (bogusJobMetadata) GetName() string             { return "x" }
+func (bogusJobMetadata) GetStatus() JobStatus        { return JobStatusPendingDispatch }
+func (bogusJobMetadata) GetPriority() int            { return 5 }
+func (bogusJobMetadata) GetCreatedAt() time.Time     { return time.Now() }
+func (bogusJobMetadata) GetStartedAt() *time.Time    { return nil }
+func (bogusJobMetadata) GetCompletedAt() *time.Time  { return nil }
+func (bogusJobMetadata) GetPayload() any             { return nil }
+func (bogusJobMetadata) GetMetadata() map[string]any { return nil }
+func (bogusJobMetadata) GetError() string            { return "" }
+func (bogusJobMetadata) GetRetryCount() int          { return 0 }
+func (bogusJobMetadata) GetTags() []string           { return nil }
+func (bogusJobMetadata) Validate() error             { return nil }

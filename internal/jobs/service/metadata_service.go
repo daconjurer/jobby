@@ -6,8 +6,11 @@ import (
 	"log"
 	"time"
 
+	"github.com/daconjurer/jobby/internal/jobs/dispatch"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 )
+
+var _ dispatch.JobUpdater = (*MetadataService)(nil)
 
 // MetadataService provides business logic for job metadata operations.
 type MetadataService struct {
@@ -99,32 +102,28 @@ func (s *MetadataService) MarkJobDispatched(ctx context.Context, jobID string) e
 
 // RecordDispatchAttempt stores publish retry metadata while the job remains pending_dispatch.
 func (s *MetadataService) RecordDispatchAttempt(ctx context.Context, jobID string, attempts int, lastError string) error {
-	_, err := s.writer.RecordDispatchAttemptIfPending(ctx, jobID, attempts, lastError)
+	matched, err := s.writer.RecordDispatchAttemptIfPending(ctx, jobID, attempts, lastError)
 	if err != nil {
 		return fmt.Errorf("failed to record dispatch attempt: %w", err)
+	}
+	if !matched {
+		return nil
 	}
 	return nil
 }
 
 // MarkJobDispatchFailed transitions a job to dispatch_failed after relay exhausts retries.
 func (s *MetadataService) MarkJobDispatchFailed(ctx context.Context, jobID string, dispatchErr error) error {
-	job, err := s.reader.Get(ctx, jobID)
-	if err != nil {
-		return fmt.Errorf("failed to get job: %w", err)
-	}
-	model := job.(*metadata.JobMetadataModel)
-	if err := model.SetStatus(metadata.JobStatusDispatchFailed); err != nil {
-		return fmt.Errorf("invalid status transition: %w", err)
-	}
 	errMsg := ""
 	if dispatchErr != nil {
 		errMsg = dispatchErr.Error()
-		model.Error = errMsg
 	}
-	st := model.Status
-	patch := metadata.UpdateJob{Status: &st, Error: &errMsg}
-	if err := s.writer.Update(ctx, jobID, patch); err != nil {
-		return fmt.Errorf("failed to update job: %w", err)
+	matched, err := s.writer.MarkDispatchFailedIfPending(ctx, jobID, errMsg)
+	if err != nil {
+		return fmt.Errorf("failed to mark job dispatch failed: %w", err)
+	}
+	if !matched {
+		return nil
 	}
 	return nil
 }
@@ -135,7 +134,10 @@ func (s *MetadataService) StartJob(ctx context.Context, jobID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get job: %w", err)
 	}
-	model := job.(*metadata.JobMetadataModel)
+	model, err := metadata.AsJobModel(job)
+	if err != nil {
+		return err
+	}
 	if err := model.SetStatus(metadata.JobStatusRunning); err != nil {
 		return fmt.Errorf("invalid status transition: %w", err)
 	}
@@ -169,7 +171,10 @@ func (s *MetadataService) CompleteJob(ctx context.Context, jobID string, result 
 		return fmt.Errorf("failed to get job: %w", err)
 	}
 
-	model := job.(*metadata.JobMetadataModel)
+	model, err := metadata.AsJobModel(job)
+	if err != nil {
+		return err
+	}
 
 	if err := model.SetStatus(metadata.JobStatusCompleted); err != nil {
 		return fmt.Errorf("invalid status transition: %w", err)
@@ -213,7 +218,10 @@ func (s *MetadataService) FailJob(ctx context.Context, jobID string, jobErr erro
 		return fmt.Errorf("failed to get job: %w", err)
 	}
 
-	model := job.(*metadata.JobMetadataModel)
+	model, err := metadata.AsJobModel(job)
+	if err != nil {
+		return err
+	}
 
 	if err := model.SetError(jobErr); err != nil {
 		return fmt.Errorf("failed to set error: %w", err)
@@ -257,7 +265,10 @@ func (s *MetadataService) CancelJob(ctx context.Context, jobID string, reason st
 		return fmt.Errorf("cannot cancel job in %s state", job.GetStatus())
 	}
 
-	model := job.(*metadata.JobMetadataModel)
+	model, err := metadata.AsJobModel(job)
+	if err != nil {
+		return err
+	}
 
 	if err := model.SetStatus(metadata.JobStatusCancelled); err != nil {
 		return fmt.Errorf("invalid status transition: %w", err)
@@ -301,7 +312,10 @@ func (s *MetadataService) RetryJob(ctx context.Context, jobID string) error {
 		return fmt.Errorf("failed to get job: %w", err)
 	}
 
-	model := job.(*metadata.JobMetadataModel)
+	model, err := metadata.AsJobModel(job)
+	if err != nil {
+		return err
+	}
 
 	if model.GetStatus() != metadata.JobStatusFailed {
 		return fmt.Errorf("only failed jobs can be retried")

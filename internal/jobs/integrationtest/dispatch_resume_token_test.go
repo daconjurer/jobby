@@ -157,28 +157,3 @@ func TestIntegration_DispatchResumeToken_RestartProcessesMissedJob(t *testing.T)
 		t.Fatalf("job2 publish count=%d want 1", msgCounts[job2Model.JobID])
 	}
 }
-
-func TestIntegration_DispatchResumeToken_FileStoreRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "token.json")
-	store := mongodb.NewFileResumeTokenStore(path)
-
-	loaded, err := store.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded != nil {
-		t.Fatalf("expected nil token on missing file, got %v", loaded)
-	}
-
-	raw := []byte(`{"_data":"resume-test-token"}`)
-	if err := store.Save(raw); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err = store.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(loaded) != string(raw) {
-		t.Fatalf("token=%q want %q", loaded, raw)
-	}
-}

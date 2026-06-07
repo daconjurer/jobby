@@ -46,6 +46,10 @@ func (w *fakeJobsWriter) RecordDispatchAttemptIfPending(context.Context, string,
 	return true, nil
 }
 
+func (w *fakeJobsWriter) MarkDispatchFailedIfPending(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+
 func TestEnqueueService_EnqueueKnownJob(t *testing.T) {
 	ctx := context.Background()
 	writer := &fakeJobsWriter{}

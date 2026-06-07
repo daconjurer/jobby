@@ -244,3 +244,12 @@ func (j *JobMetadataModel) Duration() time.Duration {
 func (j *JobMetadataModel) Age() time.Duration {
 	return time.Since(j.CreatedAt)
 }
+
+// AsJobModel returns the concrete model behind a JobMetadata value.
+func AsJobModel(job JobMetadata) (*JobMetadataModel, error) {
+	model, ok := job.(*JobMetadataModel)
+	if !ok {
+		return nil, fmt.Errorf("unexpected job metadata type %T", job)
+	}
+	return model, nil
+}

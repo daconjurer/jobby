@@ -98,8 +98,12 @@ func (w *StreamWatcher) handleEvent(ctx context.Context, stream *mongo.ChangeStr
 	if err := stream.Decode(&evt); err != nil {
 		return fmt.Errorf("decode change event: %w", err)
 	}
-	if evt.FullDocument.Topic == "" {
-		return fmt.Errorf("inserted job %s missing topic", evt.FullDocument.JobID)
+	return handlePendingDispatchInsert(ctx, w.handler, &evt.FullDocument)
+}
+
+func handlePendingDispatchInsert(ctx context.Context, handler dispatch.JobDispatchHandler, doc *metadata.JobMetadataModel) error {
+	if doc.Topic == "" {
+		return fmt.Errorf("inserted job %s missing topic", doc.JobID)
 	}
-	return w.handler.HandleDispatch(ctx, dispatch.JobDispatchFromMetadata(&evt.FullDocument))
+	return handler.HandleDispatch(ctx, dispatch.JobDispatchFromMetadata(doc))
 }

@@ -155,6 +155,8 @@ type JobsWriter interface {
 	MarkDispatchedIfPending(ctx context.Context, jobID string, dispatchedAt time.Time) (bool, error)
 	// RecordDispatchAttemptIfPending updates dispatch retry fields while pending_dispatch.
 	RecordDispatchAttemptIfPending(ctx context.Context, jobID string, attempts int, lastError string) (bool, error)
+	// MarkDispatchFailedIfPending transitions pending_dispatch → dispatch_failed.
+	MarkDispatchFailedIfPending(ctx context.Context, jobID string, errorMsg string) (bool, error)
 	AddLog(ctx context.Context, log JobLog) error
 	DeleteOldLogs(ctx context.Context, olderThan time.Duration) (int64, error)
 }

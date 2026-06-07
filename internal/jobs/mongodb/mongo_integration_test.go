@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
-	"github.com/daconjurer/jobby/internal/jobs/service"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -635,7 +634,6 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 
 func TestIntegration_MongoDispatchWriter(t *testing.T) {
 	ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
-	svc := service.NewMetadataService(reader, writer)
 
 	const topic = "persistent://public/default/accounts/jobs"
 
@@ -732,7 +730,7 @@ func TestIntegration_MongoDispatchWriter(t *testing.T) {
 		}
 	})
 
-	t.Run("MarkJobDispatchFailed", func(t *testing.T) {
+	t.Run("MarkDispatchFailedIfPending", func(t *testing.T) {
 		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", nil)
 		job.Topic = topic
 		job.DispatchAttempts = 4
@@ -740,8 +738,12 @@ func TestIntegration_MongoDispatchWriter(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := svc.MarkJobDispatchFailed(ctx, job.JobID, errors.New("publish exhausted")); err != nil {
+		matched, err := writer.MarkDispatchFailedIfPending(ctx, job.JobID, "publish exhausted")
+		if err != nil {
 			t.Fatal(err)
+		}
+		if !matched {
+			t.Fatal("expected matched=true")
 		}
 
 		jm, err := reader.Get(ctx, job.JobID)
@@ -751,6 +753,25 @@ func TestIntegration_MongoDispatchWriter(t *testing.T) {
 		}
 		if got.Error != "publish exhausted" {
 			t.Fatalf("error=%q", got.Error)
+		}
+	})
+
+	t.Run("MarkDispatchFailedIfPending_noMatchWhenDispatched", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", nil)
+		job.Topic = topic
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writer.MarkDispatchedIfPending(ctx, job.JobID, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+
+		matched, err := writer.MarkDispatchFailedIfPending(ctx, job.JobID, "late failure")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if matched {
+			t.Fatal("expected matched=false when not pending_dispatch")
 		}
 	})
 }

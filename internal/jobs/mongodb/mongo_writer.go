@@ -207,3 +207,23 @@ func (w *MongoJobsWriter) RecordDispatchAttemptIfPending(ctx context.Context, jo
 	}
 	return result.MatchedCount > 0, nil
 }
+
+// MarkDispatchFailedIfPending transitions a job with matching jobId as pending_dispatch → dispatch_failed.
+// Returns false when no document matched (already dispatched, dispatch_failed, or terminal).
+func (w *MongoJobsWriter) MarkDispatchFailedIfPending(ctx context.Context, jobID string, errorMsg string) (bool, error) {
+	filter := bson.M{
+		"jobId":  jobID,
+		"status": metadata.JobStatusPendingDispatch,
+	}
+	update := bson.M{
+		"$set": bson.M{
+			"status": metadata.JobStatusDispatchFailed,
+			"error":  errorMsg,
+		},
+	}
+	result, err := w.metadataCollection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return false, fmt.Errorf("mark job dispatch failed: %w", err)
+	}
+	return result.MatchedCount > 0, nil
+}
