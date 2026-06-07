@@ -63,15 +63,7 @@ func New(
 	)
 
 	streamRunner := opts.StreamRunner
-	pendingFetcher := opts.PendingFetcher
-	if streamRunner != nil || pendingFetcher != nil {
-		if streamRunner == nil || pendingFetcher == nil {
-			return nil, errors.Join(
-				fmt.Errorf("StreamRunner and PendingFetcher overrides must both be set"),
-				runtime.closePartial(),
-			)
-		}
-	} else {
+	if streamRunner == nil {
 		watchClient, watchColl, err := mongodb.OpenMongoWatchClient(ctx, cfg.Mongo, cfg.Stream.MaxPoolSize)
 		if err != nil {
 			return nil, errors.Join(
@@ -91,6 +83,10 @@ func New(
 		}
 
 		streamRunner = mongodb.NewStreamWatcher(watchColl, handler, tokens)
+	}
+
+	pendingFetcher := opts.PendingFetcher
+	if pendingFetcher == nil {
 		pendingFetcher = mongodb.NewMongoPendingJobFetcher(metadataColl)
 	}
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/jobs/service"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -607,12 +608,12 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatalf("want 5 logs, got %d", len(all))
 		}
 
-		emptymetadata.JobLogs, err := reader.GetLogs(ctx, "", metadata.LogFilter{})
+		emptyJobLogs, err := reader.GetLogs(ctx, "", metadata.LogFilter{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(emptymetadata.JobLogs) != 0 {
-			t.Fatalf("GetLogs empty job id: want no rows, got %d", len(emptymetadata.JobLogs))
+		if len(emptyJobLogs) != 0 {
+			t.Fatalf("GetLogs empty job id: want no rows, got %d", len(emptyJobLogs))
 		}
 
 		levels, err := reader.GetLogs(ctx, jobID, metadata.LogFilter{Levels: []metadata.LogLevel{metadata.LogLevelDebug, metadata.LogLevelError}})
@@ -642,6 +643,128 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		}
 		if page[0].Message != "e" || page[1].Message != "w" {
 			t.Fatalf("pagination order: got %q %q want e w", page[0].Message, page[1].Message)
+		}
+	})
+}
+
+func TestIntegration_MongoDispatchWriter(t *testing.T) {
+	ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
+	svc := service.NewMetadataService(reader, writer)
+
+	const topic = "persistent://public/default/accounts/jobs"
+
+	t.Run("MarkDispatchedIfPending", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", map[string]any{"k": "v"})
+		job.Topic = topic
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+
+		dispatchedAt := time.Now().UTC().Truncate(time.Millisecond)
+		matched, err := writer.MarkDispatchedIfPending(ctx, job.JobID, dispatchedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !matched {
+			t.Fatal("expected matched=true on first MarkDispatchedIfPending")
+		}
+
+		jm, err := reader.Get(ctx, job.JobID)
+		got := mustJobModel(t, jm, err)
+		if got.Status != metadata.JobStatusDispatched {
+			t.Fatalf("status=%s want dispatched", got.Status)
+		}
+		if got.DispatchedAt == nil {
+			t.Fatal("expected dispatchedAt")
+		}
+	})
+
+	t.Run("MarkDispatchedIfPending_idempotent", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", nil)
+		job.Topic = topic
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+		firstAt := time.Now().UTC()
+		if _, err := writer.MarkDispatchedIfPending(ctx, job.JobID, firstAt); err != nil {
+			t.Fatal(err)
+		}
+
+		matched, err := writer.MarkDispatchedIfPending(ctx, job.JobID, firstAt.Add(time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if matched {
+			t.Fatal("expected matched=false when job already dispatched")
+		}
+	})
+
+	t.Run("RecordDispatchAttemptIfPending", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", nil)
+		job.Topic = topic
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+
+		matched, err := writer.RecordDispatchAttemptIfPending(ctx, job.JobID, 2, "broker timeout")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !matched {
+			t.Fatal("expected matched=true")
+		}
+
+		jm, err := reader.Get(ctx, job.JobID)
+		got := mustJobModel(t, jm, err)
+		if got.DispatchAttempts != 2 {
+			t.Fatalf("dispatchAttempts=%d want 2", got.DispatchAttempts)
+		}
+		if got.DispatchLastError != "broker timeout" {
+			t.Fatalf("dispatchLastError=%q", got.DispatchLastError)
+		}
+		if got.Status != metadata.JobStatusPendingDispatch {
+			t.Fatalf("status=%s want pending_dispatch", got.Status)
+		}
+	})
+
+	t.Run("RecordDispatchAttemptIfPending_noMatchWhenDispatched", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", nil)
+		job.Topic = topic
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writer.MarkDispatchedIfPending(ctx, job.JobID, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+
+		matched, err := writer.RecordDispatchAttemptIfPending(ctx, job.JobID, 1, "late error")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if matched {
+			t.Fatal("expected matched=false when not pending_dispatch")
+		}
+	})
+
+	t.Run("MarkJobDispatchFailed", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", nil)
+		job.Topic = topic
+		job.DispatchAttempts = 4
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := svc.MarkJobDispatchFailed(ctx, job.JobID, errors.New("publish exhausted")); err != nil {
+			t.Fatal(err)
+		}
+
+		jm, err := reader.Get(ctx, job.JobID)
+		got := mustJobModel(t, jm, err)
+		if got.Status != metadata.JobStatusDispatchFailed {
+			t.Fatalf("status=%s want dispatch_failed", got.Status)
+		}
+		if got.Error != "publish exhausted" {
+			t.Fatalf("error=%q", got.Error)
 		}
 	})
 }

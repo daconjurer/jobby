@@ -110,12 +110,34 @@ func TestNew_RequiresMetadataSvc(t *testing.T) {
 	}
 }
 
-func TestNew_PartialOverridesRejected(t *testing.T) {
-	_, err := New(context.Background(), Config{}, &mongo.Collection{}, service.NewMetadataService(nil, nil), Options{
-		Publisher:    noopPublisher{},
-		StreamRunner: &recordingStream{},
-	})
-	if err == nil {
-		t.Fatal("expected error for partial overrides")
+func TestNew_PendingFetcherOverrideKeepsDefaultStream(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stream := &recordingStream{runCh: make(chan struct{})}
+	coll := &mongo.Collection{}
+	svc := service.NewMetadataService(nil, nil)
+
+	runtime, err := New(
+		ctx,
+		Config{Worker: dispatch.WorkerConfig{PollInterval: time.Hour, MaxAttempts: 3}},
+		coll,
+		svc,
+		Options{
+			Publisher:      noopPublisher{},
+			PendingFetcher: recordingPending{},
+			StreamRunner:   stream,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go runtime.Run(ctx)
+
+	select {
+	case <-stream.runCh:
+	case <-time.After(time.Second):
+		t.Fatal("stream runner was not started")
 	}
 }

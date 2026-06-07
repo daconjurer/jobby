@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/daconjurer/jobby/internal/jobs/dispatchruntime"
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	jobpulsar "github.com/daconjurer/jobby/internal/jobs/pulsar"
 	"github.com/daconjurer/jobby/internal/jobs/service"
@@ -20,7 +21,7 @@ import (
 // Optional: JOB_TOPICS_CONFIG_PATH (relative to module root; default config/job-topics.yaml).
 
 func TestIntegration_DispatchSaga_EnqueueToDispatched(t *testing.T) {
-	h := newDispatchSagaHarness(t)
+	h := newDispatchHarness(t, dispatchruntime.Options{})
 
 	const jobName = "account-lifecycle"
 	const wantTopic = "persistent://public/default/accounts/jobs"

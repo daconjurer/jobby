@@ -111,8 +111,22 @@ func clearJobCollections(ctx context.Context, db *mongo.Database, cfg mongodb.Mo
 	return nil
 }
 
-type dispatchSagaHarness struct {
+// noopStreamRunner satisfies dispatch.StreamRunner without watching MongoDB.
+type noopStreamRunner struct{}
+
+func (noopStreamRunner) Run(ctx context.Context) { <-ctx.Done() }
+
+// emptyPendingFetcher satisfies dispatch.PendingJobFetcher without querying MongoDB.
+type emptyPendingFetcher struct{}
+
+func (emptyPendingFetcher) FetchPending(context.Context, int, int) ([]dispatch.JobDispatchProjection, error) {
+	return nil, nil
+}
+
+type dispatchHarness struct {
+	cfg         dispatchruntime.Config
 	mongoClient *mongo.Client
+	db          *mongo.Database
 	cancel      context.CancelFunc
 	runtime     *dispatchruntime.Runtime
 	metadataSvc *service.MetadataService
@@ -120,7 +134,7 @@ type dispatchSagaHarness struct {
 	pulsarCfg   config.PulsarConfig
 }
 
-func newDispatchSagaHarness(tb testing.TB) *dispatchSagaHarness {
+func newDispatchHarness(tb testing.TB, opts dispatchruntime.Options) *dispatchHarness {
 	tb.Helper()
 	cfg := integrationDispatchConfig(tb)
 
@@ -140,7 +154,7 @@ func newDispatchSagaHarness(tb testing.TB) *dispatchSagaHarness {
 	metadataSvc := service.NewMetadataService(reader, writer)
 	metadataColl := db.Collection(cfg.Mongo.CollectionMetadata)
 
-	runtime, err := dispatchruntime.New(ctx, cfg, metadataColl, metadataSvc, dispatchruntime.Options{})
+	runtime, err := dispatchruntime.New(ctx, cfg, metadataColl, metadataSvc, opts)
 	if err != nil {
 		cancel()
 		tb.Fatalf("dispatchruntime.New: %v", err)
@@ -156,8 +170,10 @@ func newDispatchSagaHarness(tb testing.TB) *dispatchSagaHarness {
 	}
 	enqueueSvc := service.NewEnqueueService(metadataSvc, resolver)
 
-	h := &dispatchSagaHarness{
+	h := &dispatchHarness{
+		cfg:         cfg,
 		mongoClient: mongoClient,
+		db:          db,
 		cancel:      cancel,
 		runtime:     runtime,
 		metadataSvc: metadataSvc,
@@ -173,6 +189,38 @@ func newDispatchSagaHarness(tb testing.TB) *dispatchSagaHarness {
 	})
 
 	return h
+}
+
+func newDispatchSagaHarness(tb testing.TB) *dispatchHarness {
+	tb.Helper()
+	return newDispatchHarness(tb, dispatchruntime.Options{})
+}
+
+func (h *dispatchHarness) stopRuntime(tb testing.TB) {
+	tb.Helper()
+	h.cancel()
+	if err := h.runtime.Close(); err != nil {
+		tb.Fatalf("runtime.Close: %v", err)
+	}
+}
+
+func startDispatchRuntime(
+	tb testing.TB,
+	cfg dispatchruntime.Config,
+	db *mongo.Database,
+	metadataSvc *service.MetadataService,
+	opts dispatchruntime.Options,
+) (context.Context, context.CancelFunc, *dispatchruntime.Runtime) {
+	tb.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	metadataColl := db.Collection(cfg.Mongo.CollectionMetadata)
+	runtime, err := dispatchruntime.New(ctx, cfg, metadataColl, metadataSvc, opts)
+	if err != nil {
+		cancel()
+		tb.Fatalf("dispatchruntime.New: %v", err)
+	}
+	go runtime.Run(ctx)
+	return ctx, cancel, runtime
 }
 
 func waitForJobStatus(tb testing.TB, svc *service.MetadataService, jobID string, want metadata.JobStatus, timeout time.Duration) *metadata.JobMetadataModel {
