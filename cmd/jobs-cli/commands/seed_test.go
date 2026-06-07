@@ -5,25 +5,25 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 	"github.com/daconjurer/jobby/internal/jobs/metadata/seed"
 )
 
 func TestSeedCommand_MissingWriter(t *testing.T) {
-	a := app.New(nil, nil)
-	a.Out = &bytes.Buffer{}
+	c := cli.New(nil, nil, nil)
+	c.Out = &bytes.Buffer{}
 
-	err := RunSeed(t.Context(), a, seed.Options{Count: 1})
+	err := RunSeed(t.Context(), c, seed.Options{Count: 1})
 	if err == nil {
 		t.Fatal("expected error when writer is nil")
 	}
 }
 
 func TestSeedCommand_InvalidCount(t *testing.T) {
-	a := app.New(nil, nil)
-	a.Out = &bytes.Buffer{}
+	c := cli.New(nil, nil, nil)
+	c.Out = &bytes.Buffer{}
 
-	err := RunSeed(t.Context(), a, seed.Options{Count: 0})
+	err := RunSeed(t.Context(), c, seed.Options{Count: 0})
 	if err == nil {
 		t.Fatal("expected error for count 0")
 	}

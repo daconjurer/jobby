@@ -1,18 +1,19 @@
-package metadata
+package mongodb
 
 import (
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-func ptrStatus(s JobStatus) *JobStatus { return &s }
+func ptrStatus(s metadata.JobStatus) *metadata.JobStatus { return &s }
 
 func TestUpdateJob_BSONReflectLayout(t *testing.T) {
-	modelType := reflect.TypeFor[JobMetadataModel]()
-	jobType := reflect.TypeFor[UpdateJob]()
+	modelType := reflect.TypeFor[metadata.JobMetadataModel]()
+	jobType := reflect.TypeFor[metadata.UpdateJob]()
 
 	for i := range jobType.NumField() {
 		sf := jobType.Field(i)
@@ -53,7 +54,7 @@ func TestBSONPartialSet_UpdateJob(t *testing.T) {
 
 	t.Run("omits_nil_pointers", func(t *testing.T) {
 		t.Parallel()
-		m, err := bsonPartialSet(&UpdateJob{})
+		m, err := bsonPartialSet(&metadata.UpdateJob{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -64,12 +65,12 @@ func TestBSONPartialSet_UpdateJob(t *testing.T) {
 
 	t.Run("subset", func(t *testing.T) {
 		t.Parallel()
-		st := JobStatusRunning
-		m, err := bsonPartialSet(&UpdateJob{Status: &st, StartedAt: &when})
+		st := metadata.JobStatusRunning
+		m, err := bsonPartialSet(&metadata.UpdateJob{Status: &st, StartedAt: &when})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(m) != 2 || m["status"] != JobStatusRunning || !m["startedAt"].(time.Time).Equal(when) {
+		if len(m) != 2 || m["status"] != metadata.JobStatusRunning || !m["startedAt"].(time.Time).Equal(when) {
 			t.Fatalf("got %+v", m)
 		}
 	})
@@ -79,8 +80,8 @@ func TestBSONPartialSet_UpdateJob(t *testing.T) {
 		payload := map[string]any{"k": 1}
 		meta := map[string]any{"a": "b"}
 		tags := []string{"x"}
-		m, err := bsonPartialSet(&UpdateJob{
-			Status:      ptrStatus(JobStatusFailed),
+		m, err := bsonPartialSet(&metadata.UpdateJob{
+			Status:      ptrStatus(metadata.JobStatusFailed),
 			Name:        &name,
 			Priority:    &pr,
 			StartedAt:   &when,
@@ -94,7 +95,7 @@ func TestBSONPartialSet_UpdateJob(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := bson.M{
-			"status":      JobStatusFailed,
+			"status":      metadata.JobStatusFailed,
 			"name":        name,
 			"priority":    pr,
 			"startedAt":   when,

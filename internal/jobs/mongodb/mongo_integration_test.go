@@ -1,6 +1,6 @@
 //go:build integration
 
-package metadata
+package mongodb
 
 import (
 	"context"
@@ -10,17 +10,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-// bogusJob satisfies JobMetadata for Create/Update but is never *JobMetadataModel.
+// bogusJob satisfies JobMetadata for Create/Update but is never *metadata.JobMetadataModel.
 type bogusJobMeta struct{}
 
 func (bogusJobMeta) GetJobID() string                    { return "20000000-0000-0000-0000-000000000001" }
 func (bogusJobMeta) GetName() string                     { return "bogus" }
-func (bogusJobMeta) GetStatus() JobStatus                { return JobStatusPending }
+func (bogusJobMeta) GetStatus() metadata.JobStatus       { return metadata.JobStatusPendingDispatch }
 func (bogusJobMeta) GetPriority() int                    { return 5 }
 func (bogusJobMeta) GetCreatedAt() time.Time             { return time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC) }
 func (bogusJobMeta) GetStartedAt() *time.Time            { return nil }
@@ -35,7 +36,7 @@ func (bogusJobMeta) Validate() error                     { return nil }
 // Integration tests require MongoDB (for example: task mongo-up).
 // Run: task test-integration
 //
-// Required: MONGODB_URI.
+// Required: MONGODB_URI (host: replicaSet=rs0 and directConnection=true — see .env.example).
 // Optional (defaults match cmd/jobs-server and .env.example): MONGODB_DATABASE, MONGODB_COLLECTION_METADATA,
 // MONGODB_COLLECTION_LOGS.
 
@@ -46,7 +47,7 @@ func integrationMongoEnv(tb testing.TB) MongoConfig {
 	}
 	uri := os.Getenv("MONGODB_URI")
 	if uri == "" {
-		tb.Fatalf("MONGODB_URI is not set (required for integration tests; see .env and compose.yml files)")
+		tb.Fatalf("MONGODB_URI is not set (required for integration tests; see .env.example)")
 	}
 	db := os.Getenv("MONGODB_DATABASE")
 	if db == "" {
@@ -165,7 +166,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 	t.Run("Create_and_Get_roundTrip", func(t *testing.T) {
 		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
-		job := NewJobMetadata(GenerateJobID(), "integration-create", map[string]any{"k": "v"})
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "integration-create", map[string]any{"k": "v"})
 		if err := writer.Create(ctx, job); err != nil {
 			t.Fatalf("Create: %v", err)
 		}
@@ -180,8 +181,8 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		if got.GetName() != job.Name {
 			t.Errorf("Name = %q, want %q", got.GetName(), job.Name)
 		}
-		if got.GetStatus() != JobStatusPending {
-			t.Errorf("Status = %s, want %s", got.GetStatus(), JobStatusPending)
+		if got.GetStatus() != metadata.JobStatusPendingDispatch {
+			t.Errorf("Status = %s, want %s", got.GetStatus(), metadata.JobStatusPendingDispatch)
 		}
 	})
 
@@ -193,7 +194,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		}
 
 		// Persistence no longer validates; collection JSON schema rejects empty name / wrong shape.
-		bad := NewJobMetadata(GenerateJobID(), "", map[string]any{})
+		bad := metadata.NewJobMetadata(metadata.GenerateJobID(), "", map[string]any{})
 		if err := writer.Create(ctx, bad); err == nil {
 			t.Fatal("Create invalid name per DB schema: want error")
 		}
@@ -202,7 +203,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatal("Create non-model job (wrong BSON shape vs schema): want error")
 		}
 
-		dup := NewJobMetadata(GenerateJobID(), "dup", nil)
+		dup := metadata.NewJobMetadata(metadata.GenerateJobID(), "dup", nil)
 		if err := writer.Create(ctx, dup); err != nil {
 			t.Fatalf("first Create: %v", err)
 		}
@@ -214,18 +215,18 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 	t.Run("Get_errors", func(t *testing.T) {
 		ctx, _, reader, _ := prepareIntegrationMongoPersistence(t)
 
-		if _, err := reader.Get(ctx, ""); !errors.Is(err, ErrJobNotFound) {
-			t.Fatalf("Get empty id: got %v, want %v", err, ErrJobNotFound)
+		if _, err := reader.Get(ctx, ""); !errors.Is(err, metadata.ErrJobNotFound) {
+			t.Fatalf("Get empty id: got %v, want %v", err, metadata.ErrJobNotFound)
 		}
-		if _, err := reader.Get(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrJobNotFound) {
-			t.Fatalf("Get missing job: got %v, want %v", err, ErrJobNotFound)
+		if _, err := reader.Get(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, metadata.ErrJobNotFound) {
+			t.Fatalf("Get missing job: got %v, want %v", err, metadata.ErrJobNotFound)
 		}
 	})
 
 	t.Run("Update_Delete", func(t *testing.T) {
 		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
-		job := NewJobMetadata(GenerateJobID(), "to-update", map[string]any{"v": 1})
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "to-update", map[string]any{"v": 1})
 		job.AddTag("t1")
 		if err := writer.Create(ctx, job); err != nil {
 			t.Fatalf("Create: %v", err)
@@ -233,42 +234,42 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 
 		job.Metadata["edited"] = true
 		meta := job.Metadata
-		if err := writer.Update(ctx, job.JobID, UpdateJob{Metadata: &meta}); err != nil {
+		if err := writer.Update(ctx, job.JobID, metadata.UpdateJob{Metadata: &meta}); err != nil {
 			t.Fatalf("Update: %v", err)
 		}
 		got, err := reader.Get(ctx, job.JobID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := got.(*JobMetadataModel).Metadata["edited"]; !ok {
+		if _, ok := got.(*metadata.JobMetadataModel).Metadata["edited"]; !ok {
 			t.Fatalf("expected metadata key edited after Update")
 		}
 
-		stale := NewJobMetadata(GenerateJobID(), "missing", nil)
+		stale := metadata.NewJobMetadata(metadata.GenerateJobID(), "missing", nil)
 		staleName := stale.Name
-		if err := writer.Update(ctx, stale.JobID, UpdateJob{Name: &staleName}); !errors.Is(err, ErrJobNotFound) {
-			t.Fatalf("Update stale: got %v, want %v", err, ErrJobNotFound)
+		if err := writer.Update(ctx, stale.JobID, metadata.UpdateJob{Name: &staleName}); !errors.Is(err, metadata.ErrJobNotFound) {
+			t.Fatalf("Update stale: got %v, want %v", err, metadata.ErrJobNotFound)
 		}
 
 		wantName := "patched-bogus"
-		if err := writer.Update(ctx, bogusJobMeta{}.GetJobID(), UpdateJob{Name: &wantName}); !errors.Is(err, ErrJobNotFound) {
-			t.Fatalf("Update unknown bogus job id: got %v want %v", err, ErrJobNotFound)
+		if err := writer.Update(ctx, bogusJobMeta{}.GetJobID(), metadata.UpdateJob{Name: &wantName}); !errors.Is(err, metadata.ErrJobNotFound) {
+			t.Fatalf("Update unknown bogus job id: got %v want %v", err, metadata.ErrJobNotFound)
 		}
 
-		if err := writer.Update(ctx, job.JobID, UpdateJob{}); !errors.Is(err, ErrEmptyUpdateJob) {
-			t.Fatalf("Update empty patch: got %v, want %v", err, ErrEmptyUpdateJob)
+		if err := writer.Update(ctx, job.JobID, metadata.UpdateJob{}); !errors.Is(err, metadata.ErrEmptyUpdateJob) {
+			t.Fatalf("Update empty patch: got %v, want %v", err, metadata.ErrEmptyUpdateJob)
 		}
 
-		if err := writer.Delete(ctx, ""); !errors.Is(err, ErrJobNotFound) {
+		if err := writer.Delete(ctx, ""); !errors.Is(err, metadata.ErrJobNotFound) {
 			t.Fatalf("Delete empty id: %v", err)
 		}
-		if err := writer.Delete(ctx, stale.JobID); !errors.Is(err, ErrJobNotFound) {
+		if err := writer.Delete(ctx, stale.JobID); !errors.Is(err, metadata.ErrJobNotFound) {
 			t.Fatalf("Delete missing: %v", err)
 		}
 		if err := writer.Delete(ctx, job.JobID); err != nil {
 			t.Fatalf("Delete: %v", err)
 		}
-		if _, err := reader.Get(ctx, job.JobID); !errors.Is(err, ErrJobNotFound) {
+		if _, err := reader.Get(ctx, job.JobID); !errors.Is(err, metadata.ErrJobNotFound) {
 			t.Fatalf("after delete Get: %v", err)
 		}
 	})
@@ -277,38 +278,38 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
 		base := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
-		a := NewJobMetadata(GenerateJobID(), "worker-a", nil)
+		a := metadata.NewJobMetadata(metadata.GenerateJobID(), "worker-a", nil)
 		a.Tags = append(a.Tags, "x", "shared")
 		a.Priority = 2
 		a.CreatedAt = base
 
-		b := NewJobMetadata(GenerateJobID(), "worker-b", nil)
+		b := metadata.NewJobMetadata(metadata.GenerateJobID(), "worker-b", nil)
 		b.Tags = append(b.Tags, "y", "shared")
 		b.Priority = 7
 		b.CreatedAt = base.Add(time.Hour)
 
-		c := NewJobMetadata(GenerateJobID(), "worker-c", nil)
+		c := metadata.NewJobMetadata(metadata.GenerateJobID(), "worker-c", nil)
 		c.Tags = append(c.Tags, "z")
 		c.Priority = 9
 		c.CreatedAt = base.Add(2 * time.Hour)
 
-		for _, j := range []*JobMetadataModel{a, b, c} {
+		for _, j := range []*metadata.JobMetadataModel{a, b, c} {
 			if err := writer.Create(ctx, j); err != nil {
 				t.Fatalf("seed Create: %v", err)
 			}
-			run := JobStatusRunning
+			run := metadata.JobStatusRunning
 			tStarted := time.Now().UTC()
-			if err := writer.Update(ctx, j.JobID, UpdateJob{Status: &run, StartedAt: &tStarted}); err != nil {
+			if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &run, StartedAt: &tStarted}); err != nil {
 				t.Fatalf("Update seed running: %v", err)
 			}
-			done := JobStatusCompleted
+			done := metadata.JobStatusCompleted
 			tCompleted := time.Now().UTC()
-			if err := writer.Update(ctx, j.JobID, UpdateJob{Status: &done, CompletedAt: &tCompleted}); err != nil {
+			if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &done, CompletedAt: &tCompleted}); err != nil {
 				t.Fatalf("Update seed completed: %v", err)
 			}
 		}
 
-		none, err := reader.List(ctx, ListFilter{
+		none, err := reader.List(ctx, metadata.ListFilter{
 			Names: []string{"__no_match__"},
 		})
 		if err != nil {
@@ -318,9 +319,9 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatalf("List mismatch names: len %d", len(none))
 		}
 
-		onlyA, err := reader.List(ctx, ListFilter{
+		onlyA, err := reader.List(ctx, metadata.ListFilter{
 			Names:    []string{"worker-a"},
-			Statuses: []JobStatus{JobStatusCompleted},
+			Statuses: []metadata.JobStatus{metadata.JobStatusCompleted},
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -329,7 +330,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatalf("filter name+status: %+v", onlyA)
 		}
 
-		byTag, err := reader.List(ctx, ListFilter{Tags: []string{"y"}})
+		byTag, err := reader.List(ctx, metadata.ListFilter{Tags: []string{"y"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -338,9 +339,9 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		}
 
 		minP := 6
-		highPri, err := reader.List(ctx, ListFilter{
+		highPri, err := reader.List(ctx, metadata.ListFilter{
 			MinPriority: &minP,
-			Statuses:    []JobStatus{JobStatusCompleted},
+			Statuses:    []metadata.JobStatus{metadata.JobStatusCompleted},
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -350,7 +351,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		}
 
 		maxP := 7
-		lowPri, err := reader.List(ctx, ListFilter{
+		lowPri, err := reader.List(ctx, metadata.ListFilter{
 			MaxPriority: &maxP,
 			SortBy:      "createdAt",
 			SortDesc:    false,
@@ -366,7 +367,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		}
 
 		afterWindow := base.Add(30 * time.Minute)
-		between, err := reader.List(ctx, ListFilter{
+		between, err := reader.List(ctx, metadata.ListFilter{
 			CreatedAfter:  &afterWindow,
 			CreatedBefore: func() *time.Time { z := base.Add(3 * time.Hour); return &z }(),
 		})
@@ -377,7 +378,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatalf("created window: got %d jobs %+v", len(between), jobIDs(between))
 		}
 
-		page, err := reader.List(ctx, ListFilter{
+		page, err := reader.List(ctx, metadata.ListFilter{
 			SortBy:   "createdAt",
 			SortDesc: true,
 			Skip:     1,
@@ -394,39 +395,39 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 	t.Run("UpdateJob_patch", func(t *testing.T) {
 		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
-		j := NewJobMetadata(GenerateJobID(), "flow", nil)
+		j := metadata.NewJobMetadata(metadata.GenerateJobID(), "flow", nil)
 		if err := writer.Create(ctx, j); err != nil {
 			t.Fatal(err)
 		}
 
-		run := JobStatusRunning
-		if err := writer.Update(ctx, "", UpdateJob{Status: &run}); !errors.Is(err, ErrJobNotFound) {
+		run := metadata.JobStatusRunning
+		if err := writer.Update(ctx, "", metadata.UpdateJob{Status: &run}); !errors.Is(err, metadata.ErrJobNotFound) {
 			t.Fatalf("Update empty job id: %v", err)
 		}
-		bad := JobStatus("nope")
-		if err := writer.Update(ctx, j.JobID, UpdateJob{Status: &bad}); err == nil {
+		bad := metadata.JobStatus("nope")
+		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &bad}); err == nil {
 			t.Fatal("invalid status value: want write error from collection validator")
 		}
 
 		// No transition rules in the repository: pending -> completed is persisted if callers supply timestamps / schema permits.
-		done := JobStatusCompleted
+		done := metadata.JobStatusCompleted
 		tCompleted := time.Now().UTC()
-		if err := writer.Update(ctx, j.JobID, UpdateJob{Status: &done, CompletedAt: &tCompleted}); err != nil {
+		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &done, CompletedAt: &tCompleted}); err != nil {
 			t.Fatalf("pending->completed: %v", err)
 		}
 		jm, err := reader.Get(ctx, j.JobID)
 		afterSkip := mustJobModel(t, jm, err)
-		if afterSkip.Status != JobStatusCompleted || afterSkip.CompletedAt == nil {
+		if afterSkip.Status != metadata.JobStatusCompleted || afterSkip.CompletedAt == nil {
 			t.Fatalf("after pending->completed: %+v", afterSkip)
 		}
 
-		j2 := NewJobMetadata(GenerateJobID(), "flow2", nil)
+		j2 := metadata.NewJobMetadata(metadata.GenerateJobID(), "flow2", nil)
 		if err := writer.Create(ctx, j2); err != nil {
 			t.Fatal(err)
 		}
-		running := JobStatusRunning
+		running := metadata.JobStatusRunning
 		tStarted := time.Now().UTC()
-		if err := writer.Update(ctx, j2.JobID, UpdateJob{Status: &running, StartedAt: &tStarted}); err != nil {
+		if err := writer.Update(ctx, j2.JobID, metadata.UpdateJob{Status: &running, StartedAt: &tStarted}); err != nil {
 			t.Fatalf("pending->running: %v", err)
 		}
 		jmRun, err := reader.Get(ctx, j2.JobID)
@@ -435,9 +436,9 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatal("expected startedAt after running")
 		}
 
-		completed := JobStatusCompleted
+		completed := metadata.JobStatusCompleted
 		tDone := time.Now().UTC()
-		if err := writer.Update(ctx, j2.JobID, UpdateJob{Status: &completed, CompletedAt: &tDone}); err != nil {
+		if err := writer.Update(ctx, j2.JobID, metadata.UpdateJob{Status: &completed, CompletedAt: &tDone}); err != nil {
 			t.Fatalf("running->completed: %v", err)
 		}
 		jmDone, err := reader.Get(ctx, j2.JobID)
@@ -446,13 +447,13 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatal("expected completedAt")
 		}
 
-		revived := JobStatusRunning
-		if err := writer.Update(ctx, j2.JobID, UpdateJob{Status: &revived}); err != nil {
+		revived := metadata.JobStatusRunning
+		if err := writer.Update(ctx, j2.JobID, metadata.UpdateJob{Status: &revived}); err != nil {
 			t.Fatalf("terminal->running (allowed at persistence layer): %v", err)
 		}
 		jmRev, err := reader.Get(ctx, j2.JobID)
 		got := mustJobModel(t, jmRev, err)
-		if got.Status != JobStatusRunning {
+		if got.Status != metadata.JobStatusRunning {
 			t.Fatalf("status = %s want running", got.Status)
 		}
 	})
@@ -460,28 +461,28 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 	t.Run("UpdateJob_running_preserves_startedAt", func(t *testing.T) {
 		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
-		j := NewJobMetadata(GenerateJobID(), "started-once", nil)
+		j := metadata.NewJobMetadata(metadata.GenerateJobID(), "started-once", nil)
 		if err := writer.Create(ctx, j); err != nil {
 			t.Fatal(err)
 		}
-		running := JobStatusRunning
+		running := metadata.JobStatusRunning
 		tStarted := time.Now().UTC()
-		if err := writer.Update(ctx, j.JobID, UpdateJob{Status: &running, StartedAt: &tStarted}); err != nil {
+		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &running, StartedAt: &tStarted}); err != nil {
 			t.Fatal(err)
 		}
 		firstJM, err := reader.Get(ctx, j.JobID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		first := firstJM.(*JobMetadataModel)
+		first := firstJM.(*metadata.JobMetadataModel)
 		saved := first.StartedAt
 		if saved == nil {
 			t.Fatal("nil startedAt")
 		}
 
-		failed := JobStatusFailed
+		failed := metadata.JobStatusFailed
 		tCompleted := time.Now().UTC()
-		if err := writer.Update(ctx, j.JobID, UpdateJob{Status: &failed, CompletedAt: &tCompleted}); err != nil {
+		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &failed, CompletedAt: &tCompleted}); err != nil {
 			t.Fatal(err)
 		}
 
@@ -489,7 +490,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := gotJM.(*JobMetadataModel)
+		got := gotJM.(*metadata.JobMetadataModel)
 		if got.StartedAt == nil || !got.StartedAt.Equal(*saved) {
 			t.Fatalf("startedAt changed: %+v vs %+v", got.StartedAt, saved)
 		}
@@ -498,14 +499,14 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 	t.Run("IncrementRetryCount", func(t *testing.T) {
 		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
-		if err := writer.IncrementRetryCount(ctx, ""); !errors.Is(err, ErrJobNotFound) {
+		if err := writer.IncrementRetryCount(ctx, ""); !errors.Is(err, metadata.ErrJobNotFound) {
 			t.Fatalf("IncrementRetryCount empty id: %v", err)
 		}
-		if err := writer.IncrementRetryCount(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrJobNotFound) {
+		if err := writer.IncrementRetryCount(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, metadata.ErrJobNotFound) {
 			t.Fatal(err)
 		}
 
-		j := NewJobMetadata(GenerateJobID(), "retryMe", nil)
+		j := metadata.NewJobMetadata(metadata.GenerateJobID(), "retryMe", nil)
 		if err := writer.Create(ctx, j); err != nil {
 			t.Fatal(err)
 		}
@@ -525,16 +526,16 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 	t.Run("ClearJobExecutionTimestamps", func(t *testing.T) {
 		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
-		if err := writer.ClearJobExecutionTimestamps(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrJobNotFound) {
+		if err := writer.ClearJobExecutionTimestamps(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, metadata.ErrJobNotFound) {
 			t.Fatalf("ClearJobExecutionTimestamps missing job: %v", err)
 		}
 
-		j := NewJobMetadata(GenerateJobID(), "clear-ts", nil)
+		j := metadata.NewJobMetadata(metadata.GenerateJobID(), "clear-ts", nil)
 		t0 := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
 		t1 := time.Date(2026, 2, 1, 13, 0, 0, 0, time.UTC)
 		j.StartedAt = &t0
 		j.CompletedAt = &t1
-		j.Status = JobStatusFailed
+		j.Status = metadata.JobStatusFailed
 		j.Error = "boom"
 		if err := writer.Create(ctx, j); err != nil {
 			t.Fatal(err)
@@ -554,37 +555,37 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 	t.Run("Logs", func(t *testing.T) {
 		ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
 
-		jobID := GenerateJobID()
-		job := NewJobMetadata(jobID, "log-test", nil)
+		jobID := metadata.GenerateJobID()
+		job := metadata.NewJobMetadata(jobID, "log-test", nil)
 		if err := writer.Create(ctx, job); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := writer.AddLog(ctx, JobLog{JobID: "", Level: LogLevelInfo, Message: "x", Timestamp: time.Now().UTC()}); err == nil {
+		if err := writer.AddLog(ctx, metadata.JobLog{JobID: "", Level: metadata.LogLevelInfo, Message: "x", Timestamp: time.Now().UTC()}); err == nil {
 			t.Fatal("AddLog empty job id: want error from schema / write")
 		}
-		if err := writer.AddLog(ctx, JobLog{JobID: jobID, Level: LogLevel("nope"), Message: "x", Timestamp: time.Now().UTC()}); err == nil {
+		if err := writer.AddLog(ctx, metadata.JobLog{JobID: jobID, Level: metadata.LogLevel("nope"), Message: "x", Timestamp: time.Now().UTC()}); err == nil {
 			t.Fatal("invalid log level: want error from schema / write")
 		}
 
 		t0 := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
-		tLogs := []JobLog{
-			{JobID: jobID, Timestamp: t0.Add(-time.Minute), Level: LogLevelDebug, Message: "d"},
-			{JobID: jobID, Timestamp: t0, Level: LogLevelInfo, Message: "i"},
-			{JobID: jobID, Timestamp: t0.Add(time.Minute), Level: LogLevelWarn, Message: "w"},
-			{JobID: jobID, Timestamp: t0.Add(2 * time.Minute), Level: LogLevelError, Message: "e"},
+		tLogs := []metadata.JobLog{
+			{JobID: jobID, Timestamp: t0.Add(-time.Minute), Level: metadata.LogLevelDebug, Message: "d"},
+			{JobID: jobID, Timestamp: t0, Level: metadata.LogLevelInfo, Message: "i"},
+			{JobID: jobID, Timestamp: t0.Add(time.Minute), Level: metadata.LogLevelWarn, Message: "w"},
+			{JobID: jobID, Timestamp: t0.Add(2 * time.Minute), Level: metadata.LogLevelError, Message: "e"},
 		}
 		for _, lg := range tLogs {
 			if err := writer.AddLog(ctx, lg); err != nil {
 				t.Fatalf("AddLog %+v: %v", lg, err)
 			}
 		}
-		fatalLog := JobLog{JobID: jobID, Timestamp: t0.Add(10 * time.Minute), Level: LogLevelFatal, Message: "f"}
+		fatalLog := metadata.JobLog{JobID: jobID, Timestamp: t0.Add(10 * time.Minute), Level: metadata.LogLevelFatal, Message: "f"}
 		if err := writer.AddLog(ctx, fatalLog); err != nil {
 			t.Fatal(err)
 		}
 
-		all, err := reader.GetLogs(ctx, jobID, LogFilter{})
+		all, err := reader.GetLogs(ctx, jobID, metadata.LogFilter{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -592,7 +593,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatalf("want 5 logs, got %d", len(all))
 		}
 
-		emptyJobLogs, err := reader.GetLogs(ctx, "", LogFilter{})
+		emptyJobLogs, err := reader.GetLogs(ctx, "", metadata.LogFilter{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -600,7 +601,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatalf("GetLogs empty job id: want no rows, got %d", len(emptyJobLogs))
 		}
 
-		levels, err := reader.GetLogs(ctx, jobID, LogFilter{Levels: []LogLevel{LogLevelDebug, LogLevelError}})
+		levels, err := reader.GetLogs(ctx, jobID, metadata.LogFilter{Levels: []metadata.LogLevel{metadata.LogLevelDebug, metadata.LogLevelError}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -610,7 +611,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 
 		since := t0.Add(-30 * time.Second)
 		until := t0.Add(90 * time.Second)
-		window, err := reader.GetLogs(ctx, jobID, LogFilter{Since: &since, Until: &until})
+		window, err := reader.GetLogs(ctx, jobID, metadata.LogFilter{Since: &since, Until: &until})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -618,7 +619,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatalf("time window: want 2, got %d", len(window))
 		}
 
-		page, err := reader.GetLogs(ctx, jobID, LogFilter{Limit: 2, Skip: 1})
+		page, err := reader.GetLogs(ctx, jobID, metadata.LogFilter{Limit: 2, Skip: 1})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -631,19 +632,163 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 	})
 }
 
-func mustJobModel(t *testing.T, jm JobMetadata, err error) *JobMetadataModel {
+func TestIntegration_MongoDispatchWriter(t *testing.T) {
+	ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
+
+	const topic = "persistent://public/default/accounts/jobs"
+
+	t.Run("MarkDispatchedIfPending", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", map[string]any{"k": "v"})
+		job.Topic = topic
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+
+		dispatchedAt := time.Now().UTC().Truncate(time.Millisecond)
+		matched, err := writer.MarkDispatchedIfPending(ctx, job.JobID, dispatchedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !matched {
+			t.Fatal("expected matched=true on first MarkDispatchedIfPending")
+		}
+
+		jm, err := reader.Get(ctx, job.JobID)
+		got := mustJobModel(t, jm, err)
+		if got.Status != metadata.JobStatusDispatched {
+			t.Fatalf("status=%s want dispatched", got.Status)
+		}
+		if got.DispatchedAt == nil {
+			t.Fatal("expected dispatchedAt")
+		}
+	})
+
+	t.Run("MarkDispatchedIfPending_idempotent", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", nil)
+		job.Topic = topic
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+		firstAt := time.Now().UTC()
+		if _, err := writer.MarkDispatchedIfPending(ctx, job.JobID, firstAt); err != nil {
+			t.Fatal(err)
+		}
+
+		matched, err := writer.MarkDispatchedIfPending(ctx, job.JobID, firstAt.Add(time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if matched {
+			t.Fatal("expected matched=false when job already dispatched")
+		}
+	})
+
+	t.Run("RecordDispatchAttemptIfPending", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", nil)
+		job.Topic = topic
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+
+		matched, err := writer.RecordDispatchAttemptIfPending(ctx, job.JobID, 2, "broker timeout")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !matched {
+			t.Fatal("expected matched=true")
+		}
+
+		jm, err := reader.Get(ctx, job.JobID)
+		got := mustJobModel(t, jm, err)
+		if got.DispatchAttempts != 2 {
+			t.Fatalf("dispatchAttempts=%d want 2", got.DispatchAttempts)
+		}
+		if got.DispatchLastError != "broker timeout" {
+			t.Fatalf("dispatchLastError=%q", got.DispatchLastError)
+		}
+		if got.Status != metadata.JobStatusPendingDispatch {
+			t.Fatalf("status=%s want pending_dispatch", got.Status)
+		}
+	})
+
+	t.Run("RecordDispatchAttemptIfPending_noMatchWhenDispatched", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", nil)
+		job.Topic = topic
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writer.MarkDispatchedIfPending(ctx, job.JobID, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+
+		matched, err := writer.RecordDispatchAttemptIfPending(ctx, job.JobID, 1, "late error")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if matched {
+			t.Fatal("expected matched=false when not pending_dispatch")
+		}
+	})
+
+	t.Run("MarkDispatchFailedIfPending", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", nil)
+		job.Topic = topic
+		job.DispatchAttempts = 4
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+
+		matched, err := writer.MarkDispatchFailedIfPending(ctx, job.JobID, "publish exhausted")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !matched {
+			t.Fatal("expected matched=true")
+		}
+
+		jm, err := reader.Get(ctx, job.JobID)
+		got := mustJobModel(t, jm, err)
+		if got.Status != metadata.JobStatusDispatchFailed {
+			t.Fatalf("status=%s want dispatch_failed", got.Status)
+		}
+		if got.Error != "publish exhausted" {
+			t.Fatalf("error=%q", got.Error)
+		}
+	})
+
+	t.Run("MarkDispatchFailedIfPending_noMatchWhenDispatched", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "account-lifecycle", nil)
+		job.Topic = topic
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writer.MarkDispatchedIfPending(ctx, job.JobID, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+
+		matched, err := writer.MarkDispatchFailedIfPending(ctx, job.JobID, "late failure")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if matched {
+			t.Fatal("expected matched=false when not pending_dispatch")
+		}
+	})
+}
+
+func mustJobModel(t *testing.T, jm metadata.JobMetadata, err error) *metadata.JobMetadataModel {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, ok := jm.(*JobMetadataModel)
+	model, ok := jm.(*metadata.JobMetadataModel)
 	if !ok {
-		t.Fatalf("not *JobMetadataModel: %T", jm)
+		t.Fatalf("not *metadata.JobMetadataModel: %T", jm)
 	}
 	return model
 }
 
-func jobIDs(jobs []JobMetadata) []string {
+func jobIDs(jobs []metadata.JobMetadata) []string {
 	out := make([]string, 0, len(jobs))
 	for _, j := range jobs {
 		out = append(out, j.GetJobID())

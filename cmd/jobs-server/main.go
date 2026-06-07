@@ -4,39 +4,36 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/daconjurer/jobby/internal/jobs/handler"
-	"github.com/daconjurer/jobby/internal/jobs/metadata"
-	"github.com/daconjurer/jobby/internal/jobs/service"
+	"github.com/daconjurer/jobby/internal/jobs/appruntime"
+	jobshttp "github.com/daconjurer/jobby/internal/jobs/http"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	mongoConfig, err := loadMongoMetadataConfig()
+	cfg, err := loadConfig()
 	if err != nil {
-		log.Fatalf("Failed to load MongoDB configuration: %v", err)
+		log.Fatalf("cannot start jobs-server: %v", err)
 	}
 
-	serverCfg, err := loadServerListenConfig()
+	rt, cleanup, err := appruntime.Bootstrap(ctx, appruntime.Config{
+		Mongo:            cfg.Mongo,
+		TopicsConfigPath: cfg.Topics.ConfigPath,
+	})
 	if err != nil {
-		log.Fatalf("Failed to load server configuration: %v", err)
+		log.Fatalf("Failed to bootstrap jobs runtime: %v", err)
 	}
-
-	reader, writer, mongoClient, err := metadata.OpenMongoJobs(ctx, mongoConfig)
-	if err != nil {
-		log.Fatalf("Failed to connect MongoDB jobs persistence: %v", err)
-	}
-	defer func() { _ = mongoClient.Disconnect(context.Background()) }()
+	defer cleanup()
 
 	log.Println("Connected to MongoDB (jobby database)")
-	if !reader.IndexesPresent {
-		log.Println("warning: one or more expected indexes are missing (make sure the migrations are applied)")
-	}
 
-	metadataSvc := service.NewMetadataService(reader, writer)
-	jobsHandler := handler.NewJobsHandler(metadataSvc)
+	jobsHandler := jobshttp.NewJobsHandler(rt.Metadata, rt.Enqueue)
 
 	r := gin.Default()
 
@@ -60,7 +57,7 @@ func main() {
 		jobs.GET("/:id/logs", jobsHandler.GetJobLogs)
 	}
 
-	port := serverCfg.Port
+	port := cfg.Server.Port
 	log.Printf("Starting jobs service on port %s", port)
 	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)

@@ -11,6 +11,7 @@ FROM alpine:3.21
 RUN apk --no-cache add ca-certificates wget
 WORKDIR /app
 COPY --from=builder /jobs-server /app/jobs-server
+COPY config/job-topics.yaml /app/config/job-topics.yaml
 ENV GIN_MODE=release
 EXPOSE 3001
 ENTRYPOINT ["/app/jobs-server"]

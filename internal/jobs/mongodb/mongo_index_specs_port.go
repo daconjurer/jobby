@@ -1,4 +1,4 @@
-package metadata
+package mongodb
 
 import (
 	"context"

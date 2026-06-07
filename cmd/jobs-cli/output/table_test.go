@@ -13,18 +13,20 @@ func TestOutputFormat_Table(t *testing.T) {
 	t.Run("stats", func(t *testing.T) {
 		var buf strings.Builder
 		stats := service.JobStats{
-			Total:     10,
-			Pending:   3,
-			Running:   1,
-			Completed: 4,
-			Failed:    1,
-			Cancelled: 1,
+			Total:           10,
+			PendingDispatch: 2,
+			Dispatched:      1,
+			DispatchFailed:  1,
+			Running:         1,
+			Completed:       3,
+			Failed:          1,
+			Cancelled:       1,
 		}
 		if err := WriteStatsTable(&buf, stats); err != nil {
 			t.Fatalf("WriteStatsTable: %v", err)
 		}
 		out := buf.String()
-		for _, want := range []string{"pending", "3", "running", "1", "total", "10"} {
+		for _, want := range []string{"pending_dispatch", "2", "dispatched", "running", "1", "total", "10"} {
 			if !strings.Contains(out, want) {
 				t.Fatalf("stats table missing %q:\n%s", want, out)
 			}
@@ -37,7 +39,7 @@ func TestOutputFormat_Table(t *testing.T) {
 			&metadata.JobMetadataModel{
 				JobID:      "00000000-0000-0000-0000-000000000001",
 				Name:       "demo",
-				Status:     metadata.JobStatusPending,
+				Status:     metadata.JobStatusPendingDispatch,
 				Priority:   7,
 				RetryCount: 0,
 				CreatedAt:  time.Date(2026, 5, 28, 12, 0, 0, 0, time.UTC),
@@ -47,7 +49,7 @@ func TestOutputFormat_Table(t *testing.T) {
 			t.Fatalf("WriteJobsTable: %v", err)
 		}
 		out := buf.String()
-		for _, want := range []string{"JOB ID", "demo", "pending", "7"} {
+		for _, want := range []string{"JOB ID", "demo", "pending_dispatch", "7"} {
 			if !strings.Contains(out, want) {
 				t.Fatalf("jobs table missing %q:\n%s", want, out)
 			}
