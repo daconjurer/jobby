@@ -75,3 +75,19 @@ func (r *FileTopicResolver) Resolve(jobName string) (string, error) {
 	}
 	return topic, nil
 }
+
+// UniqueTopics returns all distinct Pulsar topics in the registry.
+// Used for multi-consumer setup where executors subscribe to all topics.
+func (r *FileTopicResolver) UniqueTopics() []string {
+	seen := make(map[string]bool)
+	var topics []string
+
+	for _, topic := range r.byName {
+		if !seen[topic] {
+			seen[topic] = true
+			topics = append(topics, topic)
+		}
+	}
+
+	return topics
+}

@@ -157,6 +157,9 @@ type JobsWriter interface {
 	RecordDispatchAttemptIfPending(ctx context.Context, jobID string, attempts int, lastError string) (bool, error)
 	// MarkDispatchFailedIfPending transitions pending_dispatch → dispatch_failed.
 	MarkDispatchFailedIfPending(ctx context.Context, jobID string, errorMsg string) (bool, error)
+	// MarkRunningIfDispatched transitions dispatched → running atomically.
+	// Returns (true, nil) on success, (false, nil) if job not dispatched (idempotent duplicate).
+	MarkRunningIfDispatched(ctx context.Context, jobID string, startedAt time.Time) (bool, error)
 	AddLog(ctx context.Context, log JobLog) error
 	DeleteOldLogs(ctx context.Context, olderThan time.Duration) (int64, error)
 }

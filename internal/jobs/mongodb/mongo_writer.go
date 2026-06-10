@@ -227,3 +227,23 @@ func (w *MongoJobsWriter) MarkDispatchFailedIfPending(ctx context.Context, jobID
 	}
 	return result.MatchedCount > 0, nil
 }
+
+// MarkRunningIfDispatched transitions dispatched → running atomically.
+// Returns (true, nil) on success, (false, nil) if job not dispatched (idempotent duplicate).
+func (w *MongoJobsWriter) MarkRunningIfDispatched(ctx context.Context, jobID string, startedAt time.Time) (bool, error) {
+	filter := bson.M{
+		"jobId":  jobID,
+		"status": metadata.JobStatusDispatched,
+	}
+	update := bson.M{
+		"$set": bson.M{
+			"status":    metadata.JobStatusRunning,
+			"startedAt": startedAt,
+		},
+	}
+	result, err := w.metadataCollection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return false, fmt.Errorf("mark job running: %w", err)
+	}
+	return result.MatchedCount > 0, nil
+}
