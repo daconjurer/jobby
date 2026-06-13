@@ -91,7 +91,7 @@ Database name and collection names align with what **`migrations/001_initialize_
 - **`PULSAR_SERVICE_URL`**, **`PULSAR_SUBSCRIPTION_NAME`** on the executor — subscription defaults to **`jobber`** (Shared subscription for load balancing)
 - **`MONGODB_*`** on the executor — same as server/dispatcher for job lifecycle updates
 
-Apply migrations through **`003_job_dispatch_embedded`** (`task mongo-up` or `task docker-up`) before relying on enqueue + dispatch + execution.
+Apply migrations through **`004_error_history`** (`task mongo-up` or `task docker-up`) before relying on enqueue + dispatch + execution.
 
 **Job lifecycle:**
 1. `pending_dispatch` — created by `jobs-server` enqueue
@@ -126,6 +126,11 @@ go run ./cmd/jobs-cli stats
 go run ./cmd/jobs-cli fail <jobId> --error "boom"
 go run ./cmd/jobs-cli retry <jobId>
 go run ./cmd/jobs-cli cancel <jobId> --reason "ops hold"
+
+# HTTP fail uses the same errors shape as GET /api/jobs/:id
+curl -X POST http://localhost:3001/api/jobs/<jobId>/fail \
+  -H "Content-Type: application/json" \
+  -d '{"errors":[{"error":"boom"}]}'
 
 # Human-readable tables for read commands
 go run ./cmd/jobs-cli --output table list --status pending

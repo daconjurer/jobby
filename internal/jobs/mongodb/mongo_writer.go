@@ -218,6 +218,7 @@ func (w *MongoJobsWriter) MarkDispatchFailedIfPending(ctx context.Context, jobID
 
 	now := time.Now().UTC()
 	errorEntry := metadata.JobError{
+		Type:         metadata.JobErrorTypeDispatch,
 		RetryAttempt: 0,
 		Error:        errorMsg,
 		Timestamp:    now,

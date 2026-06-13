@@ -153,6 +153,84 @@ func TestE2EIntegration_EchoJobExecution(t *testing.T) {
 
 		t.Logf("Job %s failed as expected: error=%s", jobID, finalJob.GetLatestError())
 	})
+
+	t.Run("error_history_preserved_across_retry", func(t *testing.T) {
+		payload := map[string]any{
+			"message": "",
+		}
+		body := map[string]any{
+			"name":    "echo",
+			"payload": payload,
+			"tags":    []string{"e2e", "integration", "error-history"},
+		}
+
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		resp, err := client.Post(baseURL+"/api/jobs", "application/json", bytes.NewReader(raw))
+		if err != nil {
+			t.Fatalf("enqueue job: %v", err)
+		}
+		defer resp.Body.Close()
+
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("enqueue failed: status=%d body=%s", resp.StatusCode, respBody)
+		}
+
+		var created metadata.JobMetadataModel
+		if err := json.Unmarshal(respBody, &created); err != nil {
+			t.Fatalf("decode created job: %v", err)
+		}
+
+		jobID := created.JobID
+		if !waitForJobStatus(ctx, t, client, baseURL, jobID, metadata.JobStatusFailed, 30*time.Second) {
+			t.Fatalf("job %s did not fail on first attempt", jobID)
+		}
+
+		firstFailed := getJob(t, client, baseURL, jobID)
+		if len(firstFailed.Errors) != 1 {
+			t.Fatalf("after first failure len(errors)=%d want 1", len(firstFailed.Errors))
+		}
+		if firstFailed.Errors[0].RetryAttempt != 0 {
+			t.Fatalf("first error retryAttempt=%d want 0", firstFailed.Errors[0].RetryAttempt)
+		}
+		if firstFailed.Errors[0].Type != metadata.JobErrorTypeExecution {
+			t.Fatalf("first error type=%q want execution", firstFailed.Errors[0].Type)
+		}
+
+		retryResp, err := client.Post(fmt.Sprintf("%s/api/jobs/%s/retry", baseURL, jobID), "application/json", nil)
+		if err != nil {
+			t.Fatalf("retry job: %v", err)
+		}
+		defer retryResp.Body.Close()
+		if retryResp.StatusCode != http.StatusOK {
+			retryBody, _ := io.ReadAll(retryResp.Body)
+			t.Fatalf("retry failed: status=%d body=%s", retryResp.StatusCode, retryBody)
+		}
+
+		if !waitForJobStatus(ctx, t, client, baseURL, jobID, metadata.JobStatusFailed, 60*time.Second) {
+			t.Fatalf("job %s did not fail on second attempt", jobID)
+		}
+
+		secondFailed := getJob(t, client, baseURL, jobID)
+		if len(secondFailed.Errors) != 2 {
+			t.Fatalf("after retry cycle len(errors)=%d want 2, errors=%+v", len(secondFailed.Errors), secondFailed.Errors)
+		}
+		if secondFailed.Errors[1].RetryAttempt != 1 {
+			t.Fatalf("second error retryAttempt=%d want 1", secondFailed.Errors[1].RetryAttempt)
+		}
+		if secondFailed.RetryCount != 1 {
+			t.Fatalf("retryCount=%d want 1", secondFailed.RetryCount)
+		}
+
+		t.Logf("Job %s error history: %+v", jobID, secondFailed.Errors)
+	})
 }
 
 func waitForJobCompletion(ctx context.Context, t *testing.T, client *http.Client, baseURL, jobID string, timeout time.Duration) bool {

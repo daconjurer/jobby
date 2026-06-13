@@ -23,7 +23,7 @@ The applications of the project are defined in `cmd/`. For example:
 
 - **`internal/config`** — typed environment config (`MongoConfig`, `PulsarConfig`, `MongoDispatchWorkerConfig`, …) with validation. See [`internal/config/README.md`](../../internal/config/README.md).
 - **`internal/testutil`** — small test helpers (e.g. `ModuleRoot`, `JobTopicsConfigPath` for resolving `config/job-topics.yaml` from the module root).
-- **`internal/jobs/metadata/`** — jobs metadata domain: `JobMetadata` / `JobMetadataModel`, `JobLog`, `JobsReader` / `JobsWriter`, and related types. Unit tests run with `go test`.
+- **`internal/jobs/metadata/`** — jobs metadata domain: `JobMetadata` / `JobMetadataModel`, `JobError`, `JobLog`, `JobsReader` / `JobsWriter`, and related types. Unit tests run with `go test`.
 - **`internal/jobs/mongodb/`** — MongoDB persistence (`MongoJobsReader` / `MongoJobsWriter`, `OpenMongoJobs`, change-stream and poll helpers). Integration tests use the `integration` build tag and expect a running MongoDB (see `docs/dev/setup.md`).
 - **`internal/jobs/appruntime/`** — shared bootstrap for **`jobs-server`** and **`jobs-cli`** (MongoDB + topic resolver + **`EnqueueService`**).
 - **`internal/jobs/service/`** — **`MetadataService`** (business logic shared by **`jobs-server`** and **`jobs-cli`**); **`EnqueueService`** (topic resolution for enqueue on both entrypoints).

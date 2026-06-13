@@ -50,3 +50,26 @@ Phases 2–3 — publish + confirm
 | Error, max attempts reached | `MarkJobDispatchFailed` → `dispatch_failed` |
 
 Duplicate `HandleDispatch` calls for the same job are expected; publish and status transitions must remain idempotent per `jobId`.
+
+---
+
+## Error history (`errors[]`)
+
+Failed jobs store an **`errors`** array on `job_metadata` instead of a single `error` string (migration **004**). Each entry is a **`JobError`**:
+
+| Field | Description |
+|-------|-------------|
+| `type` | `execution` (handler / `FailJob`) or `dispatch` (`dispatch_failed`) |
+| `retryAttempt` | Value of `retryCount` when the error occurred (`0` = first attempt) |
+| `error` | Error message |
+| `timestamp` | When the error was recorded (UTC) |
+
+**Retry behaviour:** `POST /api/jobs/:id/retry` increments `retryCount` and resets dispatch fields but **does not clear** `errors`. A subsequent failure appends a new entry, so operators can see failure patterns across retries.
+
+**HTTP API:**
+
+- `GET /api/jobs/:id` — response includes `errors` (may be empty for non-failed jobs).
+- `POST /api/jobs/:id/fail` — request body uses the same shape: `{"errors":[{"error":"message"}]}`. Response is the updated job document (same as GET).
+- `POST /api/jobs/:id/retry` — no body; errors preserved.
+
+**CLI:** `jobs-cli fail --error "msg"` calls `MetadataService.FailJob` directly (not the HTTP body shape). Use `--output json` on `get` to inspect `errors`.

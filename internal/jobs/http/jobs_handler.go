@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
 	"github.com/daconjurer/jobby/internal/jobs/pulsar"
@@ -117,9 +118,10 @@ func (h *JobsHandler) ListJobs(c *gin.Context) {
 	})
 }
 
-// FailJobRequest represents the request body for failing a job.
+// FailJobRequest mirrors the job response errors shape: one or more entries; only errors[0].error is required.
+// retryAttempt, type, and timestamp are set server-side on append.
 type FailJobRequest struct {
-	Error string `json:"error" binding:"required"`
+	Errors []metadata.JobError `json:"errors" binding:"required,min=1"`
 }
 
 // FailJob handles POST /api/jobs/:id/fail.
@@ -132,7 +134,13 @@ func (h *JobsHandler) FailJob(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.FailJob(c.Request.Context(), jobID, fmt.Errorf("%s", req.Error)); err != nil {
+	errMsg, err := failJobMessage(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.svc.FailJob(c.Request.Context(), jobID, fmt.Errorf("%s", errMsg)); err != nil {
 		if errors.Is(err, metadata.ErrJobNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
 			return
@@ -141,7 +149,21 @@ func (h *JobsHandler) FailJob(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "job marked as failed"})
+	job, err := h.svc.GetJob(c.Request.Context(), jobID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, job)
+}
+
+func failJobMessage(req FailJobRequest) (string, error) {
+	msg := strings.TrimSpace(req.Errors[0].Error)
+	if msg == "" {
+		return "", errors.New("errors[0].error is required")
+	}
+	return msg, nil
 }
 
 // CancelJobRequest represents the request body for cancelling a job.

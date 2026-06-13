@@ -71,6 +71,7 @@ See `docs/dev/setup.md` for local run and test workflows.
 
 - `JobMetadata` — interface implemented by `JobMetadataModel` for type-safe job records
 - `JobStatus` — lifecycle including dispatch phase (`pending_dispatch`, `dispatched`, `dispatch_failed`) and execution phase (`running`, `completed`, `failed`, `cancelled`)
+- `JobError` — one entry in the `errors[]` history on failed jobs (`type`, `retryAttempt`, `error`, `timestamp`); preserved across retries
 - `JobsReader` / `JobsWriter` — CQRS-style persistence ports (queries vs commands); partial metadata updates use **`UpdateJob`** with **`JobsWriter.Update`** (no separate **`UpdateStatus`**—services assemble **`UpdateJob`** after domain rules)
 - Helpers such as `GenerateJobID` and `NewJobLog`
 - **`metadata/seed/`** — test-data generator used by the CLI **`seed`** command

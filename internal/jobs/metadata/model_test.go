@@ -436,6 +436,9 @@ func TestJobMetadataModel_AddError(t *testing.T) {
 		if job.Errors[0].Error != "test error message" {
 			t.Errorf("Errors[0].Error = %s, want test error message", job.Errors[0].Error)
 		}
+		if job.Errors[0].Type != JobErrorTypeExecution {
+			t.Errorf("Errors[0].Type = %s, want execution", job.Errors[0].Type)
+		}
 		if job.Errors[0].RetryAttempt != 0 {
 			t.Errorf("Errors[0].RetryAttempt = %d, want 0", job.Errors[0].RetryAttempt)
 		}

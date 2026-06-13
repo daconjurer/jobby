@@ -172,6 +172,7 @@ func applyStatus(job *metadata.JobMetadataModel, status metadata.JobStatus, f *g
 		errorMsg := f.Sentence(f.IntRange(3, 12))
 		job.Errors = []metadata.JobError{
 			{
+				Type:         metadata.JobErrorTypeExecution,
 				RetryAttempt: job.RetryCount,
 				Error:        errorMsg,
 				Timestamp:    *job.CompletedAt,

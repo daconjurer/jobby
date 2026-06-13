@@ -8,12 +8,30 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-// JobError represents a single error occurrence during job execution.
+// JobErrorType distinguishes execution failures from dispatch-phase failures.
+type JobErrorType string
+
+const (
+	JobErrorTypeExecution JobErrorType = "execution"
+	JobErrorTypeDispatch  JobErrorType = "dispatch"
+)
+
+func (t JobErrorType) IsValid() bool {
+	switch t {
+	case JobErrorTypeExecution, JobErrorTypeDispatch:
+		return true
+	default:
+		return false
+	}
+}
+
+// JobError represents a single error occurrence during job execution or dispatch.
 // Multiple JobError entries track the error history across retry attempts.
 type JobError struct {
-	RetryAttempt int       `bson:"retryAttempt" json:"retryAttempt"`
-	Error        string    `bson:"error" json:"error"`
-	Timestamp    time.Time `bson:"timestamp" json:"timestamp"`
+	Type         JobErrorType `bson:"type,omitempty" json:"type,omitempty"`
+	RetryAttempt int          `bson:"retryAttempt" json:"retryAttempt"`
+	Error        string       `bson:"error" json:"error"`
+	Timestamp    time.Time    `bson:"timestamp" json:"timestamp"`
 }
 
 // JobMetadataModel is the concrete implementation of the JobMetadata interface.
@@ -197,6 +215,7 @@ func (j *JobMetadataModel) SetStatus(status JobStatus) error {
 func (j *JobMetadataModel) AddError(err error) error {
 	if err != nil {
 		jobErr := JobError{
+			Type:         JobErrorTypeExecution,
 			RetryAttempt: j.RetryCount,
 			Error:        err.Error(),
 			Timestamp:    time.Now().UTC(),
