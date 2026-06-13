@@ -29,8 +29,10 @@ The **`jobs-server`** service starts only after **`migrate`** exits successfully
 
 The **`jobs-dispatcher`** service runs the change-stream + poll worker (Mongo watch client + jobs client + Pulsar publish). It starts after **`migrate`**, **`mongodb`**, and **`pulsar`** are ready. Integration with the API is via **`job_metadata`** (`pending_dispatch` → `dispatched`).
 
+The **`jobs-executor`** service consumes job messages from Pulsar and executes registered handlers. It starts after **`migrate`**, **`mongodb`**, and **`pulsar`** are ready. It transitions jobs through the execution lifecycle (`dispatched` → `running` → `completed`/`failed`).
+
 ```sh
-task docker-up   # mongodb → migrate → jobs-server + jobs-dispatcher (full stack)
+task docker-up   # mongodb → migrate → jobs-server + jobs-dispatcher + jobs-executor (full stack)
 task mongo-up    # mongodb + migrate only (for host go run / integration tests)
 ```
 
@@ -41,7 +43,9 @@ task mongo-up    # mongodb + migrate only (for host go run / integration tests)
 | Full stack in Docker | `task docker-up` | Inline in [compose.yml](../../compose.yml) (`mongodb:27017`, `pulsar:6650`) |
 | API on host | `task mongo-up` then `task run-jobs-server` | **`MONGODB_URI`** from `.env.example` (`localhost:27018`, `replicaSet=rs0`, `directConnection=true`) |
 | Dispatch on host | `task mongo-up` + Pulsar, then `task run-jobs-dispatcher` | Same Mongo URI; **`PULSAR_SERVICE_URL`** / **`DISPATCH_*`** from `.env` |
+| Executor on host | `task mongo-up` + Pulsar, then `task run-jobs-executor` | Same Mongo URI; **`PULSAR_SERVICE_URL`** / **`JOB_TOPICS_CONFIG_PATH`** from `.env` |
 | Integration tests | `task mongo-up` then `task test-integration` | Same **`MONGODB_URI`** (Task loads `.env`) |
+| E2E tests | `task docker-up` then `task test-integration` | Full stack required (executor completes jobs) |
 
 If **`migrate`** fails, **`jobs-server`** does not start (`depends_on: service_completed_successfully`). Fix migrate logs first (`docker compose logs migrate`). For a clean database reset: `task mongo-reset` then `task mongo-up` (or `docker compose down -v`).
 
@@ -69,9 +73,10 @@ Database name and collection names align with what **`migrations/001_initialize_
 
 # MongoDB and jobs metadata
 
-- **`MONGODB_*`** — required by **`cmd/jobs-server`**, **`cmd/jobs-dispatcher`**, and **`cmd/jobs-cli`** unless you rely on defaults; see [**.env.example**](../../.env.example).
-- **`APP_PORT`**, **`JOB_TOPICS_CONFIG_PATH`** — **`cmd/jobs-server`** only (enqueue topic resolution).
+- **`MONGODB_*`** — required by **`cmd/jobs-server`**, **`cmd/jobs-dispatcher`**, **`cmd/jobs-executor`**, and **`cmd/jobs-cli`** unless you rely on defaults; see [**.env.example**](../../.env.example).
+- **`APP_PORT`**, **`JOB_TOPICS_CONFIG_PATH`** — **`cmd/jobs-server`** and **`cmd/jobs-executor`** (enqueue topic resolution and handler registration).
 - **`PULSAR_*`**, **`DISPATCH_*`** — **`cmd/jobs-dispatcher`** only.
+- **`PULSAR_*`**, **`JOB_TOPICS_CONFIG_PATH`** — **`cmd/jobs-executor`** only.
 - **`MONGODB_URI`** — also **required** by **`internal/jobs/metadata`** integration tests
   (`task test-integration`); use the same value as for local binaries (from `.env` / your shell).
 
@@ -79,13 +84,21 @@ Database name and collection names align with what **`migrations/001_initialize_
 
 **`github.com/apache/pulsar-client-go`** is in the Go module (CGO/native libs; CI uses **`dockerpaps/golang-for-ci`** in [pre-test](../../.github/actions/pre-test/action.yaml)).
 
-**Phase 2 (dispatch):** `POST /api/jobs` on **`jobs-server`** persists **`pending_dispatch`** with embedded **`topic`**. **`jobs-dispatcher`** publishes to Pulsar (change stream + poll). Configure:
+**Phase 2–4 (dispatch + execution):** `POST /api/jobs` on **`jobs-server`** persists **`pending_dispatch`** with embedded **`topic`**. **`jobs-dispatcher`** publishes to Pulsar (change stream + poll). **`jobs-executor`** consumes from Pulsar, executes handlers, and updates job status. Configure:
 
-- **`JOB_TOPICS_CONFIG_PATH`** on the API — defaults to **`config/job-topics.yaml`**
+- **`JOB_TOPICS_CONFIG_PATH`** on the API and executor — defaults to **`config/job-topics.yaml`**
 - **`PULSAR_SERVICE_URL`**, **`DISPATCH_*`** on the dispatcher — see [**.env.example**](../../.env.example)
-- **`PULSAR_SUBSCRIPTION_NAME`** — optional; defaults to **`jobber`** (for future executor consumers)
+- **`PULSAR_SERVICE_URL`**, **`PULSAR_SUBSCRIPTION_NAME`** on the executor — subscription defaults to **`jobber`** (Shared subscription for load balancing)
+- **`MONGODB_*`** on the executor — same as server/dispatcher for job lifecycle updates
 
-Apply migrations through **`003_job_dispatch_embedded`** (`task mongo-up` or `task docker-up`) before relying on enqueue + dispatch.
+Apply migrations through **`003_job_dispatch_embedded`** (`task mongo-up` or `task docker-up`) before relying on enqueue + dispatch + execution.
+
+**Job lifecycle:**
+1. `pending_dispatch` — created by `jobs-server` enqueue
+2. `dispatched` — confirmed by `jobs-dispatcher` after Pulsar publish
+3. `running` — marked by `jobs-executor` when handler starts
+4. `completed` or `failed` — terminal states after handler execution
+5. `cancelled` — user-requested cancellation (only from `pending_dispatch` or `dispatched`)
 
 # Tests
 

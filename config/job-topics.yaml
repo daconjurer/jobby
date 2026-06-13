@@ -6,3 +6,6 @@ topics:
   optimisation:
     topic: persistent://public/default/rnd/jobs
     domain: research-and-development
+  echo:
+    topic: persistent://public/default/test/jobs
+    domain: testing
