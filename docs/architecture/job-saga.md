@@ -59,7 +59,7 @@ Failed jobs store an **`errors`** array on `job_metadata` instead of a single `e
 
 | Field | Description |
 |-------|-------------|
-| `type` | `execution` (handler / `FailJob`) or `dispatch` (`dispatch_failed`) |
+| `type` | **Required.** `execution` (handler / `FailJob`) or `dispatch` (`dispatch_failed`) |
 | `retryAttempt` | Value of `retryCount` when the error occurred (`0` = first attempt) |
 | `error` | Error message |
 | `timestamp` | When the error was recorded (UTC) |

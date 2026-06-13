@@ -91,7 +91,7 @@ Database name and collection names align with what **`migrations/001_initialize_
 - **`PULSAR_SERVICE_URL`**, **`PULSAR_SUBSCRIPTION_NAME`** on the executor — subscription defaults to **`jobber`** (Shared subscription for load balancing)
 - **`MONGODB_*`** on the executor — same as server/dispatcher for job lifecycle updates
 
-Apply migrations through **`004_error_history`** (`task mongo-up` or `task docker-up`) before relying on enqueue + dispatch + execution.
+Apply migrations through **`005_error_type`** (`task mongo-up` or `task docker-up`) before relying on enqueue + dispatch + execution.
 
 **Job lifecycle:**
 1. `pending_dispatch` — created by `jobs-server` enqueue

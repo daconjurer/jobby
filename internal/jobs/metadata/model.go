@@ -28,7 +28,7 @@ func (t JobErrorType) IsValid() bool {
 // JobError represents a single error occurrence during job execution or dispatch.
 // Multiple JobError entries track the error history across retry attempts.
 type JobError struct {
-	Type         JobErrorType `bson:"type,omitempty" json:"type,omitempty"`
+	Type         JobErrorType `bson:"type" json:"type"`
 	RetryAttempt int          `bson:"retryAttempt" json:"retryAttempt"`
 	Error        string       `bson:"error" json:"error"`
 	Timestamp    time.Time    `bson:"timestamp" json:"timestamp"`
