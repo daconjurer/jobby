@@ -28,7 +28,8 @@ func (bogusJobMeta) GetStartedAt() *time.Time            { return nil }
 func (bogusJobMeta) GetCompletedAt() *time.Time          { return nil }
 func (bogusJobMeta) GetPayload() interface{}             { return map[string]any{} }
 func (bogusJobMeta) GetMetadata() map[string]interface{} { return map[string]interface{}{} }
-func (bogusJobMeta) GetError() string                    { return "" }
+func (bogusJobMeta) GetErrors() []metadata.JobError      { return nil }
+func (bogusJobMeta) GetLatestError() string              { return "" }
 func (bogusJobMeta) GetRetryCount() int                  { return 0 }
 func (bogusJobMeta) GetTags() []string                   { return nil }
 func (bogusJobMeta) Validate() error                     { return nil }
@@ -536,7 +537,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		j.StartedAt = &t0
 		j.CompletedAt = &t1
 		j.Status = metadata.JobStatusFailed
-		j.Error = "boom"
+		j.Errors = []metadata.JobError{{RetryAttempt: 0, Error: "boom", Timestamp: t1}}
 		if err := writer.Create(ctx, j); err != nil {
 			t.Fatal(err)
 		}
@@ -751,8 +752,8 @@ func TestIntegration_MongoDispatchWriter(t *testing.T) {
 		if got.Status != metadata.JobStatusDispatchFailed {
 			t.Fatalf("status=%s want dispatch_failed", got.Status)
 		}
-		if got.Error != "publish exhausted" {
-			t.Fatalf("error=%q", got.Error)
+		if len(got.Errors) == 0 || got.GetLatestError() != "publish exhausted" {
+			t.Fatalf("error=%q, want 'publish exhausted'", got.GetLatestError())
 		}
 	})
 

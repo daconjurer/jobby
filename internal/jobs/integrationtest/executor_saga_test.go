@@ -102,30 +102,26 @@ func TestIntegration_ExecutorSaga_DispatchedToCompleted(t *testing.T) {
 		t.Fatalf("status=%s want pending_dispatch", job.Status)
 	}
 
-	// Wait for job to be dispatched
-	dispatched := waitForJobStatus(t, h.metadataSvc, job.JobID, metadata.JobStatusDispatched, 30*time.Second)
-	if dispatched.DispatchedAt == nil {
-		t.Fatal("expected dispatchedAt to be set")
-	}
-
-	// Wait for job to start running
-	running := waitForJobStatus(t, h.metadataSvc, job.JobID, metadata.JobStatusRunning, 30*time.Second)
-	if running.StartedAt == nil {
-		t.Fatal("expected startedAt to be set")
-	}
-
-	// Wait for handler to be executed
+	// Wait for handler to be executed (job may complete very quickly)
 	select {
 	case executedJobID := <-echoHandler.executed:
 		if executedJobID != job.JobID {
 			t.Fatalf("handler executed for jobID=%s want %s", executedJobID, job.JobID)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("timeout waiting for handler execution")
 	}
 
-	// Wait for job to complete
-	completed := waitForJobStatus(t, h.metadataSvc, job.JobID, metadata.JobStatusCompleted, 30*time.Second)
+	// Wait for job to complete (may already be completed)
+	completed := waitForJobStatusOrBeyond(t, h.metadataSvc, job.JobID, metadata.JobStatusCompleted, 30*time.Second)
+	
+	// Verify the job went through the full lifecycle by checking timestamps
+	if completed.DispatchedAt == nil {
+		t.Fatal("expected dispatchedAt to be set (job was never dispatched)")
+	}
+	if completed.StartedAt == nil {
+		t.Fatal("expected startedAt to be set (job never started execution)")
+	}
 	if completed.CompletedAt == nil {
 		t.Fatal("expected completedAt to be set")
 	}
@@ -139,7 +135,7 @@ func TestIntegration_ExecutorSaga_DispatchedToCompleted(t *testing.T) {
 	}
 
 	// Verify no error
-	if completed.Error != "" {
-		t.Fatalf("expected no error, got: %s", completed.Error)
+	if len(completed.Errors) != 0 {
+		t.Fatalf("expected no errors, got: %v", completed.Errors)
 	}
 }

@@ -215,10 +215,20 @@ func (w *MongoJobsWriter) MarkDispatchFailedIfPending(ctx context.Context, jobID
 		"jobId":  jobID,
 		"status": metadata.JobStatusPendingDispatch,
 	}
+
+	now := time.Now().UTC()
+	errorEntry := metadata.JobError{
+		RetryAttempt: 0,
+		Error:        errorMsg,
+		Timestamp:    now,
+	}
+
 	update := bson.M{
 		"$set": bson.M{
 			"status": metadata.JobStatusDispatchFailed,
-			"error":  errorMsg,
+		},
+		"$push": bson.M{
+			"errors": errorEntry,
 		},
 	}
 	result, err := w.metadataCollection.UpdateOne(ctx, filter, update)

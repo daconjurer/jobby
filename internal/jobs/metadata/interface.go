@@ -34,8 +34,11 @@ type JobMetadata interface {
 	// GetMetadata returns additional metadata fields as key-value pairs
 	GetMetadata() map[string]interface{}
 
-	// GetError returns the error message if job failed (empty string if no error)
-	GetError() string
+	// GetErrors returns the complete error history across all retry attempts
+	GetErrors() []JobError
+
+	// GetLatestError returns the most recent error message (convenience method)
+	GetLatestError() string
 
 	// GetRetryCount returns the number of retry attempts
 	GetRetryCount() int
@@ -210,7 +213,7 @@ type UpdateJob struct {
 	CompletedAt       *time.Time      `bson:"completedAt,omitempty"`
 	Payload           *map[string]any `bson:"payload,omitempty"`
 	Metadata          *map[string]any `bson:"metadata,omitempty"`
-	Error             *string         `bson:"error,omitempty"`
+	Errors            *[]JobError     `bson:"errors,omitempty"`
 	Tags              *[]string       `bson:"tags,omitempty"`
 	Topic             *string         `bson:"topic,omitempty"`
 	DispatchAttempts  *int            `bson:"dispatchAttempts,omitempty"`

@@ -220,18 +220,18 @@ func (s *MetadataService) FailJob(ctx context.Context, jobID string, jobErr erro
 		return err
 	}
 
-	if err := model.SetError(jobErr); err != nil {
-		return fmt.Errorf("failed to set error: %w", err)
+	if err := model.AddError(jobErr); err != nil {
+		return fmt.Errorf("failed to add error: %w", err)
 	}
 
 	st := model.Status
-	errMsg := model.Error
+	errors := model.Errors
 	var completedAt *time.Time
 	if model.CompletedAt != nil {
 		t := *model.CompletedAt
 		completedAt = &t
 	}
-	patch := metadata.UpdateJob{Status: &st, Error: &errMsg, CompletedAt: completedAt}
+	patch := metadata.UpdateJob{Status: &st, Errors: &errors, CompletedAt: completedAt}
 	if err := s.writer.Update(ctx, jobID, patch); err != nil {
 		return fmt.Errorf("failed to update job: %w", err)
 	}
@@ -322,11 +322,9 @@ func (s *MetadataService) RetryJob(ctx context.Context, jobID string) error {
 		return fmt.Errorf("failed to increment retry count: %w", err)
 	}
 	pendingDispatch := metadata.JobStatusPendingDispatch
-	emptyErr := ""
 	zeroAttempts := 0
 	patch := metadata.UpdateJob{
 		Status:           &pendingDispatch,
-		Error:            &emptyErr,
 		DispatchAttempts: &zeroAttempts,
 	}
 	if err := s.writer.Update(ctx, jobID, patch); err != nil {

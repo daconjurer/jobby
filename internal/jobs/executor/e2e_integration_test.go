@@ -147,11 +147,11 @@ func TestE2EIntegration_EchoJobExecution(t *testing.T) {
 		if finalJob.Status != metadata.JobStatusFailed {
 			t.Fatalf("final status=%s want failed, job=%+v", finalJob.Status, finalJob)
 		}
-		if finalJob.Error == "" {
-			t.Fatalf("expected error message in failed job, got empty")
+		if len(finalJob.Errors) == 0 {
+			t.Fatalf("expected error message in failed job, got empty errors array")
 		}
 
-		t.Logf("Job %s failed as expected: error=%s", jobID, finalJob.Error)
+		t.Logf("Job %s failed as expected: error=%s", jobID, finalJob.GetLatestError())
 	})
 }
 
@@ -183,7 +183,7 @@ func waitForJobStatus(ctx context.Context, t *testing.T, client *http.Client, ba
 			}
 
 			if job.Status == metadata.JobStatusFailed && targetStatus != metadata.JobStatusFailed {
-				t.Fatalf("job %s failed unexpectedly: error=%s", jobID, job.Error)
+				t.Fatalf("job %s failed unexpectedly: error=%s", jobID, job.GetLatestError())
 			}
 
 			if job.Status == metadata.JobStatusCancelled {

@@ -169,7 +169,14 @@ func applyStatus(job *metadata.JobMetadataModel, status metadata.JobStatus, f *g
 			completed := job.CreatedAt.Add(randomDuration(f, 1*time.Minute, 2*time.Hour))
 			job.CompletedAt = &completed
 		}
-		job.Error = f.Sentence(f.IntRange(3, 12))
+		errorMsg := f.Sentence(f.IntRange(3, 12))
+		job.Errors = []metadata.JobError{
+			{
+				RetryAttempt: job.RetryCount,
+				Error:        errorMsg,
+				Timestamp:    *job.CompletedAt,
+			},
+		}
 	}
 }
 
