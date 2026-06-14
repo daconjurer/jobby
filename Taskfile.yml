@@ -36,6 +36,11 @@ tasks:
     cmds:
       - go build -o bin/jobs-cli ./cmd/jobs-cli
 
+  build-jobs-executor:
+    desc: Build cmd/jobs-executor into bin/jobs-executor
+    cmds:
+      - go build -o bin/jobs-executor ./cmd/jobs-executor
+
   format-check:
     desc: Verify gofmt cleanliness (non-write)
     cmds:
@@ -71,6 +76,11 @@ tasks:
     desc: Run cmd/jobs-cli with go run
     cmds:
       - go run ./cmd/jobs-cli
+
+  run-jobs-executor:
+    desc: Run cmd/jobs-executor with go run (needs MongoDB + Pulsar)
+    cmds:
+      - go run ./cmd/jobs-executor
 
   jobs-cli-help:
     desc: Show jobs-cli root help
@@ -217,6 +227,16 @@ tasks:
     desc: Follow jobs-dispatcher container logs
     cmds:
       - docker compose logs -f jobs-dispatcher
+
+  jobs-executor-build:
+    desc: Build the jobby-jobs-executor Docker image
+    cmds:
+      - docker build -f Dockerfile.jobs-executor -t jobby-jobs-executor .
+
+  jobs-executor-logs:
+    desc: Follow jobs-executor container logs
+    cmds:
+      - docker compose logs -f jobs-executor
 
   migrate-up:
     desc: Run schema migrations (requires healthy mongodb)

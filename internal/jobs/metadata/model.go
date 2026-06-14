@@ -8,6 +8,32 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
+// JobErrorType distinguishes execution failures from dispatch-phase failures.
+type JobErrorType string
+
+const (
+	JobErrorTypeExecution JobErrorType = "execution"
+	JobErrorTypeDispatch  JobErrorType = "dispatch"
+)
+
+func (t JobErrorType) IsValid() bool {
+	switch t {
+	case JobErrorTypeExecution, JobErrorTypeDispatch:
+		return true
+	default:
+		return false
+	}
+}
+
+// JobError represents a single error occurrence during job execution or dispatch.
+// Multiple JobError entries track the error history across retry attempts.
+type JobError struct {
+	Type         JobErrorType `bson:"type" json:"type"`
+	RetryAttempt int          `bson:"retryAttempt" json:"retryAttempt"`
+	Error        string       `bson:"error" json:"error"`
+	Timestamp    time.Time    `bson:"timestamp" json:"timestamp"`
+}
+
 // JobMetadataModel is the concrete implementation of the JobMetadata interface.
 // This struct is used for MongoDB persistence with BSON tags for proper serialization.
 //
@@ -26,7 +52,7 @@ type JobMetadataModel struct {
 	CompletedAt *time.Time     `bson:"completedAt,omitempty" json:"completedAt,omitempty"`
 	Payload     map[string]any `bson:"payload" json:"payload"`
 	Metadata    map[string]any `bson:"metadata" json:"metadata"`
-	Error       string         `bson:"error,omitempty" json:"error,omitempty"`
+	Errors      []JobError     `bson:"errors,omitempty" json:"errors,omitempty"`
 	RetryCount  int            `bson:"retryCount" json:"retryCount"`
 	Tags        []string       `bson:"tags" json:"tags"`
 
@@ -70,9 +96,18 @@ func (j *JobMetadataModel) GetStartedAt() *time.Time    { return j.StartedAt }
 func (j *JobMetadataModel) GetCompletedAt() *time.Time  { return j.CompletedAt }
 func (j *JobMetadataModel) GetPayload() any             { return j.Payload }
 func (j *JobMetadataModel) GetMetadata() map[string]any { return j.Metadata }
-func (j *JobMetadataModel) GetError() string            { return j.Error }
+func (j *JobMetadataModel) GetErrors() []JobError       { return j.Errors }
 func (j *JobMetadataModel) GetRetryCount() int          { return j.RetryCount }
 func (j *JobMetadataModel) GetTags() []string           { return j.Tags }
+
+// GetLatestError returns the most recent error message, or empty string if no errors.
+// This is a convenience method for backward compatibility.
+func (j *JobMetadataModel) GetLatestError() string {
+	if len(j.Errors) == 0 {
+		return ""
+	}
+	return j.Errors[len(j.Errors)-1].Error
+}
 
 // Validate checks if the job metadata is valid according to business rules
 func (j *JobMetadataModel) Validate() error {
@@ -139,7 +174,7 @@ func (j *JobMetadataModel) Validate() error {
 		if j.CompletedAt == nil {
 			return errors.New("failed job must have completedAt timestamp")
 		}
-		if j.Error == "" {
+		if len(j.Errors) == 0 {
 			return errors.New("failed job must have error message")
 		}
 	}
@@ -175,10 +210,17 @@ func (j *JobMetadataModel) SetStatus(status JobStatus) error {
 	return nil
 }
 
-// SetError sets the error message and transitions to failed status
-func (j *JobMetadataModel) SetError(err error) error {
+// AddError appends an error to the errors history and transitions to failed status.
+// It records the retry attempt number and timestamp for audit trails.
+func (j *JobMetadataModel) AddError(err error) error {
 	if err != nil {
-		j.Error = err.Error()
+		jobErr := JobError{
+			Type:         JobErrorTypeExecution,
+			RetryAttempt: j.RetryCount,
+			Error:        err.Error(),
+			Timestamp:    time.Now().UTC(),
+		}
+		j.Errors = append(j.Errors, jobErr)
 		return j.SetStatus(JobStatusFailed)
 	}
 	return nil

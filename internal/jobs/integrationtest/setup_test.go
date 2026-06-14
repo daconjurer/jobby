@@ -65,9 +65,11 @@ func integrationPulsarEnv(tb testing.TB) config.PulsarConfig {
 	if url == "" {
 		tb.Skip("PULSAR_SERVICE_URL is not set (required for dispatch integration tests)")
 	}
+	// Use unique subscription per test to avoid consuming old messages from previous runs
+	uniqueSubscription := fmt.Sprintf("integration-dispatch-%s", metadata.GenerateJobID())
 	return config.PulsarConfig{
 		ServiceURL:       url,
-		SubscriptionName: "integration-dispatch",
+		SubscriptionName: uniqueSubscription,
 	}
 }
 
@@ -266,6 +268,31 @@ func waitForJobStatus(tb testing.TB, svc *service.MetadataService, jobID string,
 	}
 	model := job.(*metadata.JobMetadataModel)
 	tb.Fatalf("job %s status=%s want %s after %s", jobID, model.Status, want, timeout)
+	return nil
+}
+
+// waitForJobStatusOrBeyond waits for a job to reach at least the target status.
+// For terminal states like "completed", this accepts if the job has already passed through earlier states.
+func waitForJobStatusOrBeyond(tb testing.TB, svc *service.MetadataService, jobID string, minStatus metadata.JobStatus, timeout time.Duration) *metadata.JobMetadataModel {
+	tb.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		job, err := svc.GetJob(context.Background(), jobID)
+		if err == nil {
+			model := job.(*metadata.JobMetadataModel)
+			// Accept if at target status or any terminal status
+			if model.Status == minStatus || model.Status.IsTerminal() {
+				return model
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	job, err := svc.GetJob(context.Background(), jobID)
+	if err != nil {
+		tb.Fatalf("GetJob(%s): %v", jobID, err)
+	}
+	model := job.(*metadata.JobMetadataModel)
+	tb.Fatalf("job %s status=%s want at least %s after %s", jobID, model.Status, minStatus, timeout)
 	return nil
 }
 

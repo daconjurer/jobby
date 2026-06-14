@@ -17,13 +17,40 @@ This project is a microservices-based system for distributed workloads.
 |--------|------|
 | **`jobs-server`** | HTTP API — enqueue, list, cancel, retry jobs. Persists `pending_dispatch` via `EnqueueService`; no Pulsar, no change stream. |
 | **`jobs-dispatcher`** | Dispatch worker — change stream + poll fallback → Pulsar publish + status confirmation. |
+| **`jobs-executor`** | Execution worker — Pulsar consumer → handler execution → status updates (`dispatched` → `running` → `completed`/`failed`). |
 | **`jobs-cli`** | Cobra CLI with operational parity to the jobs HTTP API: same `MetadataService` for get, list, stats, fail, cancel, retry, logs, and seed. JSON stdout by default; `--output table` for interactive use. |
 | **`migrate`** | Applies `migrations/` via golang-migrate (admin URI). |
 
-**End-to-end dispatch flow**
+**End-to-end flow (enqueue → dispatch → execute)**
+
+```
+┌─────────────┐   POST /api/jobs    ┌──────────────┐   change stream   ┌──────────────┐
+│             │ ──────────────────> │              │ ────────────────> │              │
+│   Client    │                     │ jobs-server  │    or poll        │   jobs-      │
+│             │ <────────────────── │              │ <──────────────── │ dispatcher   │
+└─────────────┘   201 Created       └──────────────┘                   └──────────────┘
+                  {jobID, status:                                             │
+                   pending_dispatch}                                          │ publish
+                                                                              │ JobMessage
+                        MongoDB: job_metadata                                 v
+                        ┌────────────────────┐                          ┌─────────┐
+                        │ pending_dispatch   │                          │ Pulsar  │
+                        │ ──> dispatched     │                          └─────────┘
+                        │ ──> running        │                                │
+                        │ ──> completed      │                                │ consume
+                        └────────────────────┘                                v
+                                                                        ┌──────────────┐
+                        ┌────────────────────┐                          │   jobs-      │
+                        │ GET /api/jobs/:id  │ <──────────────────────  │  executor    │
+                        │ status=completed   │    updates metadata      └──────────────┘
+                        └────────────────────┘
+```
 
 1. **`POST /api/jobs`** on `jobs-server` resolves a topic from `config/job-topics.yaml` and inserts `pending_dispatch` into MongoDB (saga phase 1).
 2. **`jobs-dispatcher`** reacts via change stream (primary) and poll (fallback), publishes a `JobMessage` to Pulsar (phase 2), then updates status to `dispatched` or records retry / `dispatch_failed` (phase 3).
+3. **`jobs-executor`** consumes the message from Pulsar, transitions job to `running`, executes the registered handler, and marks job as `completed` or `failed`.
+
+**Client polling:** After enqueue, poll `GET /api/jobs/:id` until `status` is `completed`, `failed`, or `cancelled`. Typical flow: `pending_dispatch` → `dispatched` → `running` → `completed`.
 
 See [job-saga.md](./job-saga.md) for the saga protocol and [dispatch-worker.md](./dispatch-worker.md) for worker wiring.
 
@@ -44,6 +71,7 @@ See `docs/dev/setup.md` for local run and test workflows.
 
 - `JobMetadata` — interface implemented by `JobMetadataModel` for type-safe job records
 - `JobStatus` — lifecycle including dispatch phase (`pending_dispatch`, `dispatched`, `dispatch_failed`) and execution phase (`running`, `completed`, `failed`, `cancelled`)
+- `JobError` — one entry in the `errors[]` history on failed jobs (`type`, `retryAttempt`, `error`, `timestamp`); preserved across retries
 - `JobsReader` / `JobsWriter` — CQRS-style persistence ports (queries vs commands); partial metadata updates use **`UpdateJob`** with **`JobsWriter.Update`** (no separate **`UpdateStatus`**—services assemble **`UpdateJob`** after domain rules)
 - Helpers such as `GenerateJobID` and `NewJobLog`
 - **`metadata/seed/`** — test-data generator used by the CLI **`seed`** command
@@ -64,4 +92,11 @@ See `docs/dev/setup.md` for local run and test workflows.
 
 **`internal/jobs/dispatch`** — transport-agnostic dispatch worker and saga handler (see [dispatch-worker.md](./dispatch-worker.md))
 
-**`internal/jobs/pulsar`** — Pulsar client wrapper, topic resolver, producer, and `DispatchPublisher` adapter
+**`internal/jobs/pulsar`** — Pulsar client wrapper, topic resolver, producer, consumer (`PulsarJobConsumer`), and `DispatchPublisher` adapter
+
+**`internal/jobs/executor`** — job execution engine:
+
+- `ExecutorService` — orchestrates job execution lifecycle (validation → start → execute → complete/fail)
+- `Registry` — type-safe handler registration with panic recovery
+- `JobExecutor[T]` — generic handler interface for typed payloads
+- `handlers/` — concrete job handlers (e.g. `EchoHandler` for testing)

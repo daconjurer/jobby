@@ -53,6 +53,8 @@ docker run --rm -e MONGO_URI='mongodb://jobby_admin:jobby_admin_pass@host.docker
 | `001` | `001_initialize_database` | `job_metadata`, `job_logs`, indexes, app user |
 | `002` | `002_job_status_dispatch` | Dispatch-phase `JobStatus` values; backfill `pending` → `pending_dispatch` |
 | `003` | `003_job_dispatch_embedded` | Embedded dispatch fields on `job_metadata`; poll index for dispatch worker |
+| `004` | `004_error_history` | Replace legacy `error` string with `errors[]` history array; migrate existing data |
+| `005` | `005_error_type` | Require `type` (`execution` \| `dispatch`) on each `errors[]` item; backfill existing entries |
 
 ## Adding a new migration
 

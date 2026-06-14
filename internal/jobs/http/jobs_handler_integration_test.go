@@ -190,6 +190,25 @@ func markJobRunningForIntegrationTest(t *testing.T, writer *mongodb.MongoJobsWri
 	}
 }
 
+func getJobViaHTTP(t *testing.T, client *http.Client, baseURL, jobID string) metadata.JobMetadataModel {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, apiJobs(baseURL, "/", jobID), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get job: %d %s", resp.StatusCode, body)
+	}
+	var job metadata.JobMetadataModel
+	mustDecodeJSON(t, bytes.NewReader(body), &job)
+	return job
+}
+
 func ginErrFromBody(tb testing.TB, body []byte) string {
 	tb.Helper()
 	var wrap struct {
@@ -445,7 +464,7 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		mustDecodeJSON(t, bytes.NewReader(postBody), &created)
 		markJobRunningForIntegrationTest(t, writer, created.JobID)
 
-		failPayload := []byte(`{"error":"boom"}`)
+		failPayload := []byte(`{"errors":[{"error":"boom"}]}`)
 		failResp, err := client.Post(apiJobs(baseURL, "/", created.JobID, "/fail"), "application/json", bytes.NewReader(failPayload))
 		if err != nil {
 			t.Fatal(err)
@@ -453,6 +472,11 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		failBody := readBody(t, failResp)
 		if failResp.StatusCode != http.StatusOK {
 			t.Fatalf("fail: %d %s", failResp.StatusCode, failBody)
+		}
+		var failedJob metadata.JobMetadataModel
+		mustDecodeJSON(t, bytes.NewReader(failBody), &failedJob)
+		if len(failedJob.Errors) != 1 || failedJob.Errors[0].Error != "boom" {
+			t.Fatalf("fail response errors=%v want one entry with boom", failedJob.Errors)
 		}
 
 		cancelResp, err := client.Post(apiJobs(baseURL, "/", created.JobID, "/cancel"), "application/json", nil)
@@ -492,6 +516,88 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		mustDecodeJSON(t, bytes.NewReader(gotBody), &got)
 		if got.Status != metadata.JobStatusPendingDispatch {
 			t.Fatalf("after retry status=%s want pending_dispatch", got.Status)
+		}
+		if len(got.Errors) != 1 || got.Errors[0].Error != "boom" {
+			t.Fatalf("after retry errors=%v want preserved boom entry", got.Errors)
+		}
+	})
+
+	t.Run("ErrorHistoryAcrossRetries", func(t *testing.T) {
+		reader, writer := prepareIntegrationMongoPersistence(t)
+		baseURL, client := startJobsIntegrationServer(t, reader, writer)
+
+		postResp, err := client.Post(apiJobs(baseURL), "application/json", bytes.NewReader([]byte(`{"name":"account-lifecycle"}`)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		postBody := readBody(t, postResp)
+		if postResp.StatusCode != http.StatusCreated {
+			t.Fatalf("enqueue: %d %s", postResp.StatusCode, postBody)
+		}
+		var created metadata.JobMetadataModel
+		mustDecodeJSON(t, bytes.NewReader(postBody), &created)
+
+		markJobRunningForIntegrationTest(t, writer, created.JobID)
+
+		firstFail := []byte(`{"errors":[{"error":"first failure"}]}`)
+		failResp, err := client.Post(apiJobs(baseURL, "/", created.JobID, "/fail"), "application/json", bytes.NewReader(firstFail))
+		if err != nil {
+			t.Fatal(err)
+		}
+		failBody := readBody(t, failResp)
+		if failResp.StatusCode != http.StatusOK {
+			t.Fatalf("first fail: %d %s", failResp.StatusCode, failBody)
+		}
+		var afterFirstFail metadata.JobMetadataModel
+		mustDecodeJSON(t, bytes.NewReader(failBody), &afterFirstFail)
+		if len(afterFirstFail.Errors) != 1 {
+			t.Fatalf("after first fail len(errors)=%d want 1", len(afterFirstFail.Errors))
+		}
+		if afterFirstFail.Errors[0].RetryAttempt != 0 {
+			t.Fatalf("first error retryAttempt=%d want 0", afterFirstFail.Errors[0].RetryAttempt)
+		}
+		if afterFirstFail.Errors[0].Type != metadata.JobErrorTypeExecution {
+			t.Fatalf("first error type=%q want execution", afterFirstFail.Errors[0].Type)
+		}
+
+		retryResp, err := client.Post(apiJobs(baseURL, "/", created.JobID, "/retry"), "application/json", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		retryBody := readBody(t, retryResp)
+		if retryResp.StatusCode != http.StatusOK {
+			t.Fatalf("retry: %d %s", retryResp.StatusCode, retryBody)
+		}
+
+		getAfterRetry := getJobViaHTTP(t, client, baseURL, created.JobID)
+		if len(getAfterRetry.Errors) != 1 {
+			t.Fatalf("after retry len(errors)=%d want 1 preserved", len(getAfterRetry.Errors))
+		}
+		if getAfterRetry.RetryCount != 1 {
+			t.Fatalf("after retry retryCount=%d want 1", getAfterRetry.RetryCount)
+		}
+
+		markJobRunningForIntegrationTest(t, writer, created.JobID)
+
+		secondFail := []byte(`{"errors":[{"error":"second failure"}]}`)
+		failResp2, err := client.Post(apiJobs(baseURL, "/", created.JobID, "/fail"), "application/json", bytes.NewReader(secondFail))
+		if err != nil {
+			t.Fatal(err)
+		}
+		failBody2 := readBody(t, failResp2)
+		if failResp2.StatusCode != http.StatusOK {
+			t.Fatalf("second fail: %d %s", failResp2.StatusCode, failBody2)
+		}
+		var afterSecondFail metadata.JobMetadataModel
+		mustDecodeJSON(t, bytes.NewReader(failBody2), &afterSecondFail)
+		if len(afterSecondFail.Errors) != 2 {
+			t.Fatalf("after second fail len(errors)=%d want 2", len(afterSecondFail.Errors))
+		}
+		if afterSecondFail.Errors[1].RetryAttempt != 1 {
+			t.Fatalf("second error retryAttempt=%d want 1", afterSecondFail.Errors[1].RetryAttempt)
+		}
+		if afterSecondFail.GetLatestError() != "second failure" {
+			t.Fatalf("GetLatestError()=%q want second failure", afterSecondFail.GetLatestError())
 		}
 	})
 
@@ -591,7 +697,7 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		baseURL, client := startJobsIntegrationServer(t, reader, writer)
 
 		id := metadata.GenerateJobID()
-		resp, err := client.Post(apiJobs(baseURL, "/", id, "/fail"), "application/json", bytes.NewReader([]byte(`{"error":"x"}`)))
+		resp, err := client.Post(apiJobs(baseURL, "/", id, "/fail"), "application/json", bytes.NewReader([]byte(`{"errors":[{"error":"x"}]}`)))
 		if err != nil {
 			t.Fatal(err)
 		}

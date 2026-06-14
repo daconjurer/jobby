@@ -50,7 +50,7 @@ func TestBSONPartialSet_UpdateJob(t *testing.T) {
 	when := time.Unix(1_700_000_000, 0).UTC()
 	name := "n"
 	pr := 3
-	em := ""
+	errors := []metadata.JobError{{RetryAttempt: 0, Error: "test error", Timestamp: when}}
 
 	t.Run("omits_nil_pointers", func(t *testing.T) {
 		t.Parallel()
@@ -88,7 +88,7 @@ func TestBSONPartialSet_UpdateJob(t *testing.T) {
 			CompletedAt: &when,
 			Payload:     &payload,
 			Metadata:    &meta,
-			Error:       &em,
+			Errors:      &errors,
 			Tags:        &tags,
 		})
 		if err != nil {
@@ -102,7 +102,7 @@ func TestBSONPartialSet_UpdateJob(t *testing.T) {
 			"completedAt": when,
 			"payload":     payload,
 			"metadata":    meta,
-			"error":       em,
+			"errors":      errors,
 			"tags":        tags,
 		}
 		if len(m) != len(want) {

@@ -210,7 +210,7 @@ func TestIntegration_DispatchFailure_ExhaustionMarksDispatchFailed(t *testing.T)
 	if !strings.Contains(failed.DispatchLastError, brokerDownErrMsg) {
 		t.Fatalf("dispatchLastError=%q want substring %q", failed.DispatchLastError, brokerDownErrMsg)
 	}
-	if failed.Error == "" {
-		t.Fatal("expected error field to be set on dispatch_failed")
+	if len(failed.Errors) == 0 {
+		t.Fatal("expected errors array to be set on dispatch_failed")
 	}
 }

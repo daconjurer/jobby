@@ -128,27 +128,24 @@ func (s *MetadataService) MarkJobDispatchFailed(ctx context.Context, jobID strin
 	return nil
 }
 
-// StartJob transitions a dispatched job to running status.
+// StartJob transitions a dispatched job to running status atomically.
+// Returns error only on infrastructure failures (not duplicate delivery).
 func (s *MetadataService) StartJob(ctx context.Context, jobID string) error {
-	job, err := s.reader.Get(ctx, jobID)
+	now := time.Now()
+	matched, err := s.writer.MarkRunningIfDispatched(ctx, jobID, now)
 	if err != nil {
-		return fmt.Errorf("failed to get job: %w", err)
+		return fmt.Errorf("failed to mark job running: %w", err)
 	}
-	model, err := metadata.AsJobModel(job)
-	if err != nil {
-		return err
-	}
-	if err := model.SetStatus(metadata.JobStatusRunning); err != nil {
-		return fmt.Errorf("invalid status transition: %w", err)
-	}
-	st := model.Status
-	patch := metadata.UpdateJob{Status: &st}
-	if model.StartedAt != nil {
-		ts := *model.StartedAt
-		patch.StartedAt = &ts
-	}
-	if err := s.writer.Update(ctx, jobID, patch); err != nil {
-		return fmt.Errorf("failed to start job: %w", err)
+
+	// If not matched, job is not in dispatched state (duplicate delivery or already running/terminal)
+	if !matched {
+		job, getErr := s.reader.Get(ctx, jobID)
+		if getErr != nil {
+			log.Printf("warning: duplicate delivery for job %s, failed to get current status: %v", jobID, getErr)
+		} else {
+			log.Printf("warning: duplicate delivery for job %s, current status: %s", jobID, job.GetStatus())
+		}
+		return nil
 	}
 
 	logEntry := metadata.NewJobLogWithSource(
@@ -223,18 +220,18 @@ func (s *MetadataService) FailJob(ctx context.Context, jobID string, jobErr erro
 		return err
 	}
 
-	if err := model.SetError(jobErr); err != nil {
-		return fmt.Errorf("failed to set error: %w", err)
+	if err := model.AddError(jobErr); err != nil {
+		return fmt.Errorf("failed to add error: %w", err)
 	}
 
 	st := model.Status
-	errMsg := model.Error
+	errors := model.Errors
 	var completedAt *time.Time
 	if model.CompletedAt != nil {
 		t := *model.CompletedAt
 		completedAt = &t
 	}
-	patch := metadata.UpdateJob{Status: &st, Error: &errMsg, CompletedAt: completedAt}
+	patch := metadata.UpdateJob{Status: &st, Errors: &errors, CompletedAt: completedAt}
 	if err := s.writer.Update(ctx, jobID, patch); err != nil {
 		return fmt.Errorf("failed to update job: %w", err)
 	}
@@ -325,11 +322,9 @@ func (s *MetadataService) RetryJob(ctx context.Context, jobID string) error {
 		return fmt.Errorf("failed to increment retry count: %w", err)
 	}
 	pendingDispatch := metadata.JobStatusPendingDispatch
-	emptyErr := ""
 	zeroAttempts := 0
 	patch := metadata.UpdateJob{
 		Status:           &pendingDispatch,
-		Error:            &emptyErr,
 		DispatchAttempts: &zeroAttempts,
 	}
 	if err := s.writer.Update(ctx, jobID, patch); err != nil {

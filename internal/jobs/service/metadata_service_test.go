@@ -18,6 +18,8 @@ type recordingJobsWriter struct {
 	markDispatchFailedMatched bool
 	markDispatchFailedErr     error
 	markDispatchFailedCalls   []markDispatchFailedCall
+	markRunningMatched        bool
+	markRunningErr            error
 	logs                      []metadata.JobLog
 	createErr                 error
 }
@@ -68,6 +70,10 @@ func (w *recordingJobsWriter) MarkDispatchFailedIfPending(_ context.Context, job
 		errorMsg: errorMsg,
 	})
 	return w.markDispatchFailedMatched, w.markDispatchFailedErr
+}
+
+func (w *recordingJobsWriter) MarkRunningIfDispatched(_ context.Context, _ string, _ time.Time) (bool, error) {
+	return w.markRunningMatched, w.markRunningErr
 }
 
 func (w *recordingJobsWriter) AddLog(_ context.Context, log metadata.JobLog) error {
@@ -287,5 +293,50 @@ func TestMetadataService_CancelJob_RejectsTerminalStatus(t *testing.T) {
 	err := svc.CancelJob(ctx, job.JobID, "too late")
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestMetadataService_StartJob_WritesLogWhenMatched(t *testing.T) {
+	ctx := context.Background()
+	writer := &recordingJobsWriter{markRunningMatched: true}
+	svc := NewMetadataService(stubJobsReader{}, writer)
+
+	if err := svc.StartJob(ctx, "job-1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(writer.logs) != 1 {
+		t.Fatalf("logs=%d want 1", len(writer.logs))
+	}
+	if writer.logs[0].Message != "Job started" {
+		t.Fatalf("log message=%q", writer.logs[0].Message)
+	}
+}
+
+func TestMetadataService_StartJob_SkipsLogWhenNotMatched(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
+	job.Status = metadata.JobStatusRunning
+	writer := &recordingJobsWriter{markRunningMatched: false}
+	svc := NewMetadataService(stubJobsReader{job: job}, writer)
+
+	if err := svc.StartJob(ctx, job.JobID); err != nil {
+		t.Fatal(err)
+	}
+	if len(writer.logs) != 0 {
+		t.Fatalf("logs=%v want none", writer.logs)
+	}
+}
+
+func TestMetadataService_StartJob_HandlesGetErrorOnDuplicateDelivery(t *testing.T) {
+	ctx := context.Background()
+	writer := &recordingJobsWriter{markRunningMatched: false}
+	readerErr := errors.New("db down")
+	svc := NewMetadataService(stubJobsReader{err: readerErr}, writer)
+
+	if err := svc.StartJob(ctx, "job-1"); err != nil {
+		t.Fatal("expected no error on duplicate delivery even if Get fails")
+	}
+	if len(writer.logs) != 0 {
+		t.Fatalf("logs=%v want none", writer.logs)
 	}
 }

@@ -215,15 +215,46 @@ func (w *MongoJobsWriter) MarkDispatchFailedIfPending(ctx context.Context, jobID
 		"jobId":  jobID,
 		"status": metadata.JobStatusPendingDispatch,
 	}
+
+	now := time.Now().UTC()
+	errorEntry := metadata.JobError{
+		Type:         metadata.JobErrorTypeDispatch,
+		RetryAttempt: 0,
+		Error:        errorMsg,
+		Timestamp:    now,
+	}
+
 	update := bson.M{
 		"$set": bson.M{
 			"status": metadata.JobStatusDispatchFailed,
-			"error":  errorMsg,
+		},
+		"$push": bson.M{
+			"errors": errorEntry,
 		},
 	}
 	result, err := w.metadataCollection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return false, fmt.Errorf("mark job dispatch failed: %w", err)
+	}
+	return result.MatchedCount > 0, nil
+}
+
+// MarkRunningIfDispatched transitions dispatched → running atomically.
+// Returns (true, nil) on success, (false, nil) if job not dispatched (idempotent duplicate).
+func (w *MongoJobsWriter) MarkRunningIfDispatched(ctx context.Context, jobID string, startedAt time.Time) (bool, error) {
+	filter := bson.M{
+		"jobId":  jobID,
+		"status": metadata.JobStatusDispatched,
+	}
+	update := bson.M{
+		"$set": bson.M{
+			"status":    metadata.JobStatusRunning,
+			"startedAt": startedAt,
+		},
+	}
+	result, err := w.metadataCollection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return false, fmt.Errorf("mark job running: %w", err)
 	}
 	return result.MatchedCount > 0, nil
 }
