@@ -6,11 +6,13 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/daconjurer/jobby/internal/jobs/metadata"
 )
 
 // mockJobLifecycle is a mock implementation of JobLifecycle for testing
 type mockJobLifecycle struct {
-	startJobFunc    func(ctx context.Context, jobID string) error
+	startJobFunc    func(ctx context.Context, jobID string) (bool, error)
 	completeJobFunc func(ctx context.Context, jobID string, result map[string]any) error
 	failJobFunc     func(ctx context.Context, jobID string, err error) error
 
@@ -19,12 +21,12 @@ type mockJobLifecycle struct {
 	failJobCalls     int
 }
 
-func (m *mockJobLifecycle) StartJob(ctx context.Context, jobID string) error {
+func (m *mockJobLifecycle) StartJob(ctx context.Context, jobID string) (bool, error) {
 	m.startJobCalls++
 	if m.startJobFunc != nil {
 		return m.startJobFunc(ctx, jobID)
 	}
-	return nil
+	return true, nil
 }
 
 func (m *mockJobLifecycle) CompleteJob(ctx context.Context, jobID string, result map[string]any) error {
@@ -224,8 +226,8 @@ func TestExecutorService_ExecuteJob_DecodeError(t *testing.T) {
 func TestExecutorService_ExecuteJob_StartJobError(t *testing.T) {
 	startErr := errors.New("mongo unavailable")
 	mock := &mockJobLifecycle{
-		startJobFunc: func(ctx context.Context, jobID string) error {
-			return startErr
+		startJobFunc: func(ctx context.Context, jobID string) (bool, error) {
+			return false, startErr
 		},
 	}
 	registry := NewRegistry()
@@ -278,5 +280,103 @@ func TestExecutorService_ExecuteJob_CompleteJobError(t *testing.T) {
 	}
 	if mock.completeJobCalls != 1 {
 		t.Errorf("expected CompleteJob to be called once, got %d", mock.completeJobCalls)
+	}
+}
+
+func TestExecutorService_ExecuteJob_CompleteJobTerminalConflict(t *testing.T) {
+	mock := &mockJobLifecycle{
+		completeJobFunc: func(ctx context.Context, jobID string, result map[string]any) error {
+			return metadata.ErrJobAlreadyTerminal
+		},
+	}
+	registry := NewRegistry()
+	executed := false
+	exec := &testExecutor{
+		executeFunc: func(ctx context.Context, jobID string, data testPayload) error {
+			executed = true
+			return nil
+		},
+	}
+	Register(registry, "test-job", exec)
+	service := NewExecutorService(mock, registry)
+	payload := json.RawMessage(`{"value":"test"}`)
+
+	err := service.ExecuteJob(context.Background(), "job-123", "test-job", payload)
+
+	if err != nil {
+		t.Fatalf("expected nil (ack), got %v", err)
+	}
+	if !executed {
+		t.Error("expected handler to be executed")
+	}
+	if mock.startJobCalls != 1 {
+		t.Errorf("expected StartJob to be called once, got %d", mock.startJobCalls)
+	}
+	if mock.completeJobCalls != 1 {
+		t.Errorf("expected CompleteJob to be called once, got %d", mock.completeJobCalls)
+	}
+}
+
+func TestExecutorService_ExecuteJob_FailJobTerminalConflict(t *testing.T) {
+	handlerErr := errors.New("handler error")
+	mock := &mockJobLifecycle{
+		failJobFunc: func(ctx context.Context, jobID string, err error) error {
+			return metadata.ErrJobAlreadyTerminal
+		},
+	}
+	registry := NewRegistry()
+	exec := &testExecutor{
+		executeFunc: func(ctx context.Context, jobID string, data testPayload) error {
+			return handlerErr
+		},
+	}
+	Register(registry, "test-job", exec)
+	service := NewExecutorService(mock, registry)
+	payload := json.RawMessage(`{"value":"test"}`)
+
+	err := service.ExecuteJob(context.Background(), "job-123", "test-job", payload)
+
+	if err != nil {
+		t.Fatalf("expected nil (ack), got %v", err)
+	}
+	if mock.startJobCalls != 1 {
+		t.Errorf("expected StartJob to be called once, got %d", mock.startJobCalls)
+	}
+	if mock.failJobCalls != 1 {
+		t.Errorf("expected FailJob to be called once, got %d", mock.failJobCalls)
+	}
+}
+
+func TestExecutorService_ExecuteJob_StartJobNotMatched(t *testing.T) {
+	mock := &mockJobLifecycle{
+		startJobFunc: func(ctx context.Context, jobID string) (bool, error) {
+			return false, nil
+		},
+	}
+	registry := NewRegistry()
+	executed := false
+	exec := &testExecutor{
+		executeFunc: func(ctx context.Context, jobID string, data testPayload) error {
+			executed = true
+			return nil
+		},
+	}
+	Register(registry, "test-job", exec)
+	service := NewExecutorService(mock, registry)
+	payload := json.RawMessage(`{"value":"test"}`)
+
+	err := service.ExecuteJob(context.Background(), "job-123", "test-job", payload)
+
+	if err != nil {
+		t.Fatalf("expected nil (ack), got %v", err)
+	}
+	if executed {
+		t.Error("expected handler to NOT be executed (StartJob didn't match)")
+	}
+	if mock.startJobCalls != 1 {
+		t.Errorf("expected StartJob to be called once, got %d", mock.startJobCalls)
+	}
+	if mock.completeJobCalls != 0 {
+		t.Errorf("expected CompleteJob to not be called, got %d", mock.completeJobCalls)
 	}
 }

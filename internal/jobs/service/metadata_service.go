@@ -129,12 +129,14 @@ func (s *MetadataService) MarkJobDispatchFailed(ctx context.Context, jobID strin
 }
 
 // StartJob transitions a dispatched job to running status atomically.
-// Returns error only on infrastructure failures (not duplicate delivery).
-func (s *MetadataService) StartJob(ctx context.Context, jobID string) error {
+// Returns (matched, error) where matched=true means the transition occurred.
+// matched=false means job wasn't in dispatched state (duplicate delivery or already terminal).
+// Returns error only on infrastructure failures.
+func (s *MetadataService) StartJob(ctx context.Context, jobID string) (bool, error) {
 	now := time.Now()
 	matched, err := s.writer.MarkRunningIfDispatched(ctx, jobID, now)
 	if err != nil {
-		return fmt.Errorf("failed to mark job running: %w", err)
+		return false, fmt.Errorf("failed to mark job running: %w", err)
 	}
 
 	// If not matched, job is not in dispatched state (duplicate delivery or already running/terminal)
@@ -145,7 +147,7 @@ func (s *MetadataService) StartJob(ctx context.Context, jobID string) error {
 		} else {
 			log.Printf("warning: duplicate delivery for job %s, current status: %s", jobID, job.GetStatus())
 		}
-		return nil
+		return false, nil
 	}
 
 	logEntry := metadata.NewJobLogWithSource(
@@ -158,7 +160,7 @@ func (s *MetadataService) StartJob(ctx context.Context, jobID string) error {
 		log.Printf("warning: failed to log job start: %v", err)
 	}
 
-	return nil
+	return true, nil
 }
 
 // CompleteJob marks a job as completed successfully.
@@ -171,6 +173,11 @@ func (s *MetadataService) CompleteJob(ctx context.Context, jobID string, result 
 	model, err := metadata.AsJobModel(job)
 	if err != nil {
 		return err
+	}
+
+	// Check if job is already in a terminal state
+	if model.Status.IsTerminal() {
+		return metadata.ErrJobAlreadyTerminal
 	}
 
 	if err := model.SetStatus(metadata.JobStatusCompleted); err != nil {
@@ -218,6 +225,11 @@ func (s *MetadataService) FailJob(ctx context.Context, jobID string, jobErr erro
 	model, err := metadata.AsJobModel(job)
 	if err != nil {
 		return err
+	}
+
+	// Check if job is already in a terminal state
+	if model.Status.IsTerminal() {
+		return metadata.ErrJobAlreadyTerminal
 	}
 
 	if err := model.AddError(jobErr); err != nil {

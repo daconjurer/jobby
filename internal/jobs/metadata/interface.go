@@ -29,10 +29,10 @@ type JobMetadata interface {
 	GetCompletedAt() *time.Time
 
 	// GetPayload returns the job-specific data (dynamic schema per job type)
-	GetPayload() interface{}
+	GetPayload() any
 
 	// GetMetadata returns additional metadata fields as key-value pairs
-	GetMetadata() map[string]interface{}
+	GetMetadata() map[string]any
 
 	// GetErrors returns the complete error history across all retry attempts
 	GetErrors() []JobError
@@ -91,6 +91,11 @@ func (s JobStatus) IsTerminal() bool {
 // IsDispatchPhase returns true while the job may not yet be consumed or dispatch can be retried.
 func (s JobStatus) IsDispatchPhase() bool {
 	return s == JobStatusPendingDispatch || s == JobStatusDispatched || s == JobStatusDispatchFailed
+}
+
+// IsRunning returns true if the job status is 'running' (mostly for consistency).
+func (s JobStatus) IsRunning() bool {
+	return s == JobStatusRunning
 }
 
 // CanTransitionTo checks if transitioning from current status to target status is valid
