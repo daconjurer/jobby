@@ -40,7 +40,9 @@ type statusWeight struct {
 }
 
 var statusDistribution = []statusWeight{
-	{metadata.JobStatusPending, 10},
+	{metadata.JobStatusPendingDispatch, 5},
+	{metadata.JobStatusDispatched, 3},
+	{metadata.JobStatusDispatchFailed, 2},
 	{metadata.JobStatusRunning, 5},
 	{metadata.JobStatusCompleted, 70},
 	{metadata.JobStatusFailed, 10},
@@ -128,11 +130,26 @@ func randomCreatedAt(f *gofakeit.Faker, maxAge time.Duration) time.Time {
 	return f.DateRange(start, time.Now().UTC())
 }
 
+func fakeTopic(f *gofakeit.Faker) string {
+	return fmt.Sprintf("persistent://public/default/seed/%s", f.Word())
+}
+
 func applyStatus(job *metadata.JobMetadataModel, status metadata.JobStatus, f *gofakeit.Faker) {
 	job.Status = status
 
 	switch status {
-	case metadata.JobStatusPending:
+	case metadata.JobStatusPendingDispatch:
+		job.Topic = fakeTopic(f)
+		return
+	case metadata.JobStatusDispatched:
+		job.Topic = fakeTopic(f)
+		dispatched := job.CreatedAt.Add(randomDuration(f, 1*time.Second, 30*time.Minute))
+		job.DispatchedAt = &dispatched
+		return
+	case metadata.JobStatusDispatchFailed:
+		job.Topic = fakeTopic(f)
+		job.DispatchAttempts = f.IntRange(1, 5)
+		job.DispatchLastError = f.Sentence(f.IntRange(3, 8))
 		return
 	case metadata.JobStatusRunning:
 		started := job.CreatedAt.Add(randomDuration(f, 1*time.Minute, 2*time.Hour))
@@ -152,7 +169,15 @@ func applyStatus(job *metadata.JobMetadataModel, status metadata.JobStatus, f *g
 			completed := job.CreatedAt.Add(randomDuration(f, 1*time.Minute, 2*time.Hour))
 			job.CompletedAt = &completed
 		}
-		job.Error = f.Sentence(f.IntRange(3, 12))
+		errorMsg := f.Sentence(f.IntRange(3, 12))
+		job.Errors = []metadata.JobError{
+			{
+				Type:         metadata.JobErrorTypeExecution,
+				RetryAttempt: job.RetryCount,
+				Error:        errorMsg,
+				Timestamp:    *job.CompletedAt,
+			},
+		}
 	}
 }
 

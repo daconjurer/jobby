@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 )
 
 func TestGetCommand_MissingArgs(t *testing.T) {
-	a := app.New(nil, nil)
-	cmd := NewGetCmd(a)
+	c := cli.New(nil, nil, nil)
+	cmd := NewGetCmd(c)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 

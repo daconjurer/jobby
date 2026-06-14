@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 )
 
 func TestNewRootCmd(t *testing.T) {
-	root := newRootCmd(app.New(nil, nil))
+	root := newRootCmd(cli.New(nil, nil, nil))
 
 	want := map[string]bool{
 		"ping":   false,
@@ -43,7 +43,7 @@ func TestNewRootCmd(t *testing.T) {
 }
 
 func TestRootCommand_Help(t *testing.T) {
-	root := newRootCmd(app.New(nil, nil))
+	root := newRootCmd(cli.New(nil, nil, nil))
 	root.SetArgs([]string{"--help"})
 
 	var buf bytes.Buffer

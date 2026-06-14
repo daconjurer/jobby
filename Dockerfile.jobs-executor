@@ -1,0 +1,15 @@
+# Build stage
+FROM golang:1.25 AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /jobs-executor ./cmd/jobs-executor
+
+# Runtime stage
+FROM alpine:3.21
+RUN apk --no-cache add ca-certificates wget
+WORKDIR /app
+COPY --from=builder /jobs-executor /app/jobs-executor
+COPY config/job-topics.yaml /app/config/job-topics.yaml
+ENTRYPOINT ["/app/jobs-executor"]

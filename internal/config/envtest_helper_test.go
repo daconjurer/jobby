@@ -6,6 +6,11 @@ import (
 )
 
 // mongoEnvKeys are environment variables exercised by MongoConfig tests.
+var pulsarEnvKeys = []string{
+	"PULSAR_SERVICE_URL",
+	"PULSAR_SUBSCRIPTION_NAME",
+}
+
 var mongoEnvKeys = []string{
 	"MONGODB_URI",
 	"MONGODB_DATABASE",

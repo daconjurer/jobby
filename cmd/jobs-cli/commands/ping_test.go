@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 )
 
 func TestPingCommand_JSONOutput(t *testing.T) {
 	var buf bytes.Buffer
-	a := &app.App{Out: &buf, Format: app.OutputJSON}
+	c := &cli.CLI{Out: &buf, Format: cli.OutputJSON}
 
-	if err := WritePingHealth(a); err != nil {
+	if err := WritePingHealth(c); err != nil {
 		t.Fatalf("WritePingHealth: %v", err)
 	}
 

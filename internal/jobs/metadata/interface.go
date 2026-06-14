@@ -13,7 +13,7 @@ type JobMetadata interface {
 	// GetName returns the job type name (e.g., "process-kml")
 	GetName() string
 
-	// GetStatus returns the current job execution status
+	// GetStatus returns the current job lifecycle status (dispatch + execution).
 	GetStatus() JobStatus
 
 	// GetPriority returns the job priority (0-10, where 10 is highest)
@@ -34,8 +34,11 @@ type JobMetadata interface {
 	// GetMetadata returns additional metadata fields as key-value pairs
 	GetMetadata() map[string]interface{}
 
-	// GetError returns the error message if job failed (empty string if no error)
-	GetError() string
+	// GetErrors returns the complete error history across all retry attempts
+	GetErrors() []JobError
+
+	// GetLatestError returns the most recent error message (convenience method)
+	GetLatestError() string
 
 	// GetRetryCount returns the number of retry attempts
 	GetRetryCount() int
@@ -47,23 +50,19 @@ type JobMetadata interface {
 	Validate() error
 }
 
-// JobStatus represents the execution state of a job
+// JobStatus represents the full job lifecycle: dispatch (Mongo → Pulsar) then execution.
 type JobStatus string
 
 const (
-	// JobStatusPending indicates job is queued but not yet started
-	JobStatusPending JobStatus = "pending"
+	// Dispatch phase
+	JobStatusPendingDispatch JobStatus = "pending_dispatch"
+	JobStatusDispatched      JobStatus = "dispatched"
+	JobStatusDispatchFailed  JobStatus = "dispatch_failed"
 
-	// JobStatusRunning indicates job is currently executing
-	JobStatusRunning JobStatus = "running"
-
-	// JobStatusCompleted indicates job finished successfully
+	// Execution phase
+	JobStatusRunning   JobStatus = "running"
 	JobStatusCompleted JobStatus = "completed"
-
-	// JobStatusFailed indicates job encountered an error and failed
-	JobStatusFailed JobStatus = "failed"
-
-	// JobStatusCancelled indicates job was cancelled by user or system
+	JobStatusFailed    JobStatus = "failed"
 	JobStatusCancelled JobStatus = "cancelled"
 )
 
@@ -75,30 +74,59 @@ func (s JobStatus) String() string {
 // IsValid checks if the status is a valid JobStatus value
 func (s JobStatus) IsValid() bool {
 	switch s {
-	case JobStatusPending, JobStatusRunning, JobStatusCompleted, JobStatusFailed, JobStatusCancelled:
+	case JobStatusPendingDispatch, JobStatusDispatched, JobStatusDispatchFailed,
+		JobStatusRunning, JobStatusCompleted, JobStatusFailed, JobStatusCancelled:
 		return true
 	default:
 		return false
 	}
 }
 
-// IsTerminal returns true if the job status is terminal (completed, failed, or cancelled)
-// Terminal states indicate the job will not transition to any other state.
+// IsTerminal returns true if the job status is terminal (completed, failed, or cancelled).
+// dispatch_failed is recoverable and not terminal.
 func (s JobStatus) IsTerminal() bool {
 	return s == JobStatusCompleted || s == JobStatusFailed || s == JobStatusCancelled
 }
 
+// IsDispatchPhase returns true while the job may not yet be consumed or dispatch can be retried.
+func (s JobStatus) IsDispatchPhase() bool {
+	return s == JobStatusPendingDispatch || s == JobStatusDispatched || s == JobStatusDispatchFailed
+}
+
 // CanTransitionTo checks if transitioning from current status to target status is valid
 func (s JobStatus) CanTransitionTo(target JobStatus) bool {
+	if !target.IsValid() {
+		return false
+	}
+	if s == target {
+		return false
+	}
+	if s == JobStatusFailed {
+		return target == JobStatusPendingDispatch
+	}
 	if s.IsTerminal() {
 		return false
 	}
 
 	switch s {
-	case JobStatusPending:
-		return target == JobStatusRunning || target == JobStatusCancelled || target == JobStatusFailed
+	case JobStatusPendingDispatch:
+		return target == JobStatusDispatched ||
+			target == JobStatusDispatchFailed ||
+			target == JobStatusCancelled
+
+	case JobStatusDispatchFailed:
+		return target == JobStatusPendingDispatch
+
+	case JobStatusDispatched:
+		return target == JobStatusRunning ||
+			target == JobStatusCancelled ||
+			target == JobStatusFailed
+
 	case JobStatusRunning:
-		return target == JobStatusCompleted || target == JobStatusFailed || target == JobStatusCancelled
+		return target == JobStatusCompleted ||
+			target == JobStatusFailed ||
+			target == JobStatusCancelled
+
 	default:
 		return false
 	}
@@ -112,6 +140,7 @@ type JobsReader interface {
 	CountJobs(ctx context.Context, filter ListFilter) (int64, error)
 	GetJobsByStatus(ctx context.Context, status JobStatus, limit int) ([]JobMetadata, error)
 	GetPendingJobs(ctx context.Context, limit int) ([]JobMetadata, error)
+	GetDispatchedJobs(ctx context.Context, limit int) ([]JobMetadata, error)
 	GetRecentLogs(ctx context.Context, jobID string, limit int) ([]JobLog, error)
 	GetErrorLogs(ctx context.Context, jobID string) ([]JobLog, error)
 }
@@ -125,6 +154,15 @@ type JobsWriter interface {
 	IncrementRetryCount(ctx context.Context, jobID string) error
 	// ClearJobExecutionTimestamps removes startedAt and completedAt from job_metadata (e.g. after retry).
 	ClearJobExecutionTimestamps(ctx context.Context, jobID string) error
+	// MarkDispatchedIfPending sets status to dispatched when still pending_dispatch.
+	MarkDispatchedIfPending(ctx context.Context, jobID string, dispatchedAt time.Time) (bool, error)
+	// RecordDispatchAttemptIfPending updates dispatch retry fields while pending_dispatch.
+	RecordDispatchAttemptIfPending(ctx context.Context, jobID string, attempts int, lastError string) (bool, error)
+	// MarkDispatchFailedIfPending transitions pending_dispatch → dispatch_failed.
+	MarkDispatchFailedIfPending(ctx context.Context, jobID string, errorMsg string) (bool, error)
+	// MarkRunningIfDispatched transitions dispatched → running atomically.
+	// Returns (true, nil) on success, (false, nil) if job not dispatched (idempotent duplicate).
+	MarkRunningIfDispatched(ctx context.Context, jobID string, startedAt time.Time) (bool, error)
 	AddLog(ctx context.Context, log JobLog) error
 	DeleteOldLogs(ctx context.Context, olderThan time.Duration) (int64, error)
 }
@@ -168,15 +206,19 @@ type ListFilter struct {
 // UpdateJob selects fields to set on job_metadata by job ID. Nil pointers omit that field from the update.
 // bson tags mirror JobMetadataModel (see bsonPartialSet). Use IncrementRetryCount for atomic retry bumps.
 type UpdateJob struct {
-	Status      *JobStatus      `bson:"status,omitempty"`
-	Name        *string         `bson:"name,omitempty"`
-	Priority    *int            `bson:"priority,omitempty"`
-	StartedAt   *time.Time      `bson:"startedAt,omitempty"`
-	CompletedAt *time.Time      `bson:"completedAt,omitempty"`
-	Payload     *map[string]any `bson:"payload,omitempty"`
-	Metadata    *map[string]any `bson:"metadata,omitempty"`
-	Error       *string         `bson:"error,omitempty"`
-	Tags        *[]string       `bson:"tags,omitempty"`
+	Status            *JobStatus      `bson:"status,omitempty"`
+	Name              *string         `bson:"name,omitempty"`
+	Priority          *int            `bson:"priority,omitempty"`
+	StartedAt         *time.Time      `bson:"startedAt,omitempty"`
+	CompletedAt       *time.Time      `bson:"completedAt,omitempty"`
+	Payload           *map[string]any `bson:"payload,omitempty"`
+	Metadata          *map[string]any `bson:"metadata,omitempty"`
+	Errors            *[]JobError     `bson:"errors,omitempty"`
+	Tags              *[]string       `bson:"tags,omitempty"`
+	Topic             *string         `bson:"topic,omitempty"`
+	DispatchAttempts  *int            `bson:"dispatchAttempts,omitempty"`
+	DispatchLastError *string         `bson:"dispatchLastError,omitempty"`
+	DispatchedAt      *time.Time      `bson:"dispatchedAt,omitempty"`
 }
 
 // JobLog represents a log entry for job execution

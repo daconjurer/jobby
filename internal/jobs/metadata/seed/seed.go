@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/jobs/mongodb"
 )
 
 const defaultBatchSize = 500
@@ -13,7 +14,7 @@ const defaultBatchSize = 500
 var defaultMaxAge = 30 * 24 * time.Hour
 
 // Run generates and inserts jobs (and optional logs) in batches.
-func Run(ctx context.Context, writer *metadata.MongoJobsWriter, opts Options) (Result, error) {
+func Run(ctx context.Context, writer *mongodb.MongoJobsWriter, opts Options) (Result, error) {
 	if writer == nil {
 		return Result{}, fmt.Errorf("mongo writer is required")
 	}

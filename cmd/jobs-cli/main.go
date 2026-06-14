@@ -11,7 +11,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
+	"github.com/daconjurer/jobby/internal/jobs/appruntime"
 )
 
 func main() {
@@ -27,18 +28,22 @@ func main() {
 func run() error {
 	ctx := context.Background()
 
-	mongoCfg, err := loadMongoMetadataConfig()
+	cfg, err := loadConfig()
 	if err != nil {
-		return fmt.Errorf("load mongodb configuration: %w", err)
+		return fmt.Errorf("load configuration: %w", err)
 	}
 
-	application, cleanup, err := app.Bootstrap(ctx, mongoCfg)
+	rt, cleanup, err := appruntime.Bootstrap(ctx, appruntime.Config{
+		Mongo:            cfg.Mongo,
+		TopicsConfigPath: cfg.Topics.ConfigPath,
+	})
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	log.Printf("Connected to MongoDB (%s database)", mongoCfg.Database)
+	log.Printf("Connected to MongoDB (%s database)", cfg.Mongo.Database)
 
-	return newRootCmd(application).Execute()
+	c := cli.New(rt.Metadata, rt.Enqueue, rt.Writer)
+	return newRootCmd(c).Execute()
 }

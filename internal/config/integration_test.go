@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/jobs/mongodb"
 )
 
 func TestMongoEnv_ParseMatchesReferenceFromOSEnv(t *testing.T) {
@@ -26,13 +26,13 @@ func TestMongoEnv_ParseMatchesReferenceFromOSEnv(t *testing.T) {
 	t.Setenv("MONGODB_MAX_POOL_SIZE", "42")
 	t.Setenv("MONGODB_MIN_POOL_SIZE", "7")
 
-	want := referenceMongoMetadataFromOSEnv(t)
+	want := referenceMongoDBConfigFromOSEnv(t)
 
 	var mc MongoConfig
 	if err := LoadInto(&mc); err != nil {
 		t.Fatalf("LoadInto MongoConfig: %v", err)
 	}
-	got := mongoMetadataFromConfig(mc)
+	got := mongodbConfigFromConfig(mc)
 
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("mongo env mismatch vs reference from os.Getenv\nwant %+v\ngot %+v", want, got)
@@ -52,13 +52,13 @@ func TestMongoEnv_DefaultOptionalMatchesTagDefaults(t *testing.T) {
 	t.Setenv("MONGODB_COLLECTION_METADATA", metaColl)
 	t.Setenv("MONGODB_COLLECTION_LOGS", logsColl)
 
-	want := referenceMongoMetadataFromOSEnv(t)
+	want := referenceMongoDBConfigFromOSEnv(t)
 
 	var mc MongoConfig
 	if err := LoadInto(&mc); err != nil {
 		t.Fatalf("LoadInto MongoConfig: %v", err)
 	}
-	got := mongoMetadataFromConfig(mc)
+	got := mongodbConfigFromConfig(mc)
 
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("defaults mismatch\nwant %+v\ngot %+v", want, got)
@@ -88,7 +88,7 @@ func TestServerEnv_WithExplicitAppPort(t *testing.T) {
 	}
 }
 
-func referenceMongoMetadataFromOSEnv(t *testing.T) metadata.MongoConfig {
+func referenceMongoDBConfigFromOSEnv(t *testing.T) mongodb.MongoConfig {
 	t.Helper()
 	mustEnv := func(key string) string {
 		t.Helper()
@@ -122,7 +122,7 @@ func referenceMongoMetadataFromOSEnv(t *testing.T) metadata.MongoConfig {
 	if err != nil {
 		t.Fatalf("MONGODB_MIN_POOL_SIZE: %v", err)
 	}
-	return metadata.MongoConfig{
+	return mongodb.MongoConfig{
 		URI:                mustEnv("MONGODB_URI"),
 		Database:           mustEnv("MONGODB_DATABASE"),
 		CollectionMetadata: mustEnv("MONGODB_COLLECTION_METADATA"),
@@ -133,8 +133,8 @@ func referenceMongoMetadataFromOSEnv(t *testing.T) metadata.MongoConfig {
 	}
 }
 
-func mongoMetadataFromConfig(mc MongoConfig) metadata.MongoConfig {
-	return metadata.MongoConfig{
+func mongodbConfigFromConfig(mc MongoConfig) mongodb.MongoConfig {
+	return mongodb.MongoConfig{
 		URI:                mc.URI,
 		Database:           mc.Database,
 		CollectionMetadata: mc.CollectionMetadata,

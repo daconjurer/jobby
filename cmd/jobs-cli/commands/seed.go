@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 	"github.com/daconjurer/jobby/cmd/jobs-cli/output"
 	"github.com/daconjurer/jobby/internal/jobs/metadata/seed"
 	"github.com/spf13/cobra"
 )
 
-func NewSeedCmd(a *app.App) *cobra.Command {
+func NewSeedCmd(c *cli.CLI) *cobra.Command {
 	var (
 		count         int
 		logsPerJobMin int
@@ -30,7 +30,7 @@ func NewSeedCmd(a *app.App) *cobra.Command {
 Job records respect domain validation rules: valid UUIDs, status-specific timestamps,
 priority bounds, and failed jobs include error messages.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return RunSeed(cmd.Context(), a, seed.Options{
+			return RunSeed(cmd.Context(), c, seed.Options{
 				Count:         count,
 				LogsPerJobMin: logsPerJobMin,
 				LogsPerJobMax: logsPerJobMax,
@@ -53,15 +53,15 @@ priority bounds, and failed jobs include error messages.`,
 	return cmd
 }
 
-func RunSeed(ctx context.Context, a *app.App, opts seed.Options) error {
-	if a.Writer == nil {
+func RunSeed(ctx context.Context, c *cli.CLI, opts seed.Options) error {
+	if c.Writer == nil {
 		return fmt.Errorf("mongo writer is not configured")
 	}
 
-	result, err := seed.Run(ctx, a.Writer, opts)
+	result, err := seed.Run(ctx, c.Writer, opts)
 	if err != nil {
 		return fmt.Errorf("seed database: %w", err)
 	}
 
-	return output.WriteJSON(a.Out, result)
+	return output.WriteJSON(c.Out, result)
 }
