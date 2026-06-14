@@ -21,8 +21,8 @@ func TestNewJobMetadata(t *testing.T) {
 		if job.Name != name {
 			t.Errorf("expected name %s, got %s", name, job.Name)
 		}
-		if job.Status != JobStatusPending {
-			t.Errorf("expected status %s, got %s", JobStatusPending, job.Status)
+		if job.Status != JobStatusPendingDispatch {
+			t.Errorf("expected status %s, got %s", JobStatusPendingDispatch, job.Status)
 		}
 		if job.Priority != 5 {
 			t.Errorf("expected priority 5, got %d", job.Priority)
@@ -69,7 +69,7 @@ func TestJobMetadataModel_Getters(t *testing.T) {
 		CompletedAt: &completedAt,
 		Payload:     map[string]any{"key": "value"},
 		Metadata:    map[string]any{"meta": "data"},
-		Error:       "test error",
+		Errors:      []JobError{{RetryAttempt: 0, Error: "test error", Timestamp: now}},
 		RetryCount:  3,
 		Tags:        []string{"tag1", "tag2"},
 	}
@@ -95,8 +95,11 @@ func TestJobMetadataModel_Getters(t *testing.T) {
 	if job.GetCompletedAt() == nil || !job.GetCompletedAt().Equal(completedAt) {
 		t.Errorf("GetCompletedAt() = %v, want %v", job.GetCompletedAt(), &completedAt)
 	}
-	if job.GetError() != "test error" {
-		t.Errorf("GetError() = %s, want test error", job.GetError())
+	if len(job.GetErrors()) != 1 {
+		t.Errorf("GetErrors() length = %d, want 1", len(job.GetErrors()))
+	}
+	if job.GetLatestError() != "test error" {
+		t.Errorf("GetLatestError() = %s, want test error", job.GetLatestError())
 	}
 	if job.GetRetryCount() != 3 {
 		t.Errorf("GetRetryCount() = %d, want 3", job.GetRetryCount())
@@ -128,11 +131,12 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name: "valid pending job",
+			name: "valid pending_dispatch job",
 			job: &JobMetadataModel{
 				JobID:      "123e4567-e89b-12d3-a456-426614174000",
 				Name:       "test-job",
-				Status:     JobStatusPending,
+				Status:     JobStatusPendingDispatch,
+				Topic:      "persistent://public/default/jobs-test",
 				Priority:   5,
 				CreatedAt:  time.Now(),
 				RetryCount: 0,
@@ -146,7 +150,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			name: "missing jobId",
 			job: &JobMetadataModel{
 				Name:      "test-job",
-				Status:    JobStatusPending,
+				Status:    JobStatusPendingDispatch,
 				Priority:  5,
 				CreatedAt: time.Now(),
 			},
@@ -158,7 +162,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			job: &JobMetadataModel{
 				JobID:     "invalid-id",
 				Name:      "test-job",
-				Status:    JobStatusPending,
+				Status:    JobStatusPendingDispatch,
 				Priority:  5,
 				CreatedAt: time.Now(),
 			},
@@ -169,7 +173,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			name: "missing name",
 			job: &JobMetadataModel{
 				JobID:     "123e4567-e89b-12d3-a456-426614174000",
-				Status:    JobStatusPending,
+				Status:    JobStatusPendingDispatch,
 				Priority:  5,
 				CreatedAt: time.Now(),
 			},
@@ -181,7 +185,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			job: &JobMetadataModel{
 				JobID:     "123e4567-e89b-12d3-a456-426614174000",
 				Name:      string(make([]byte, 101)),
-				Status:    JobStatusPending,
+				Status:    JobStatusPendingDispatch,
 				Priority:  5,
 				CreatedAt: time.Now(),
 			},
@@ -205,7 +209,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			job: &JobMetadataModel{
 				JobID:     "123e4567-e89b-12d3-a456-426614174000",
 				Name:      "test-job",
-				Status:    JobStatusPending,
+				Status:    JobStatusPendingDispatch,
 				Priority:  -1,
 				CreatedAt: time.Now(),
 			},
@@ -217,7 +221,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			job: &JobMetadataModel{
 				JobID:     "123e4567-e89b-12d3-a456-426614174000",
 				Name:      "test-job",
-				Status:    JobStatusPending,
+				Status:    JobStatusPendingDispatch,
 				Priority:  11,
 				CreatedAt: time.Now(),
 			},
@@ -229,7 +233,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			job: &JobMetadataModel{
 				JobID:    "123e4567-e89b-12d3-a456-426614174000",
 				Name:     "test-job",
-				Status:   JobStatusPending,
+				Status:   JobStatusPendingDispatch,
 				Priority: 5,
 			},
 			wantErr: true,
@@ -240,7 +244,7 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 			job: &JobMetadataModel{
 				JobID:      "123e4567-e89b-12d3-a456-426614174000",
 				Name:       "test-job",
-				Status:     JobStatusPending,
+				Status:     JobStatusPendingDispatch,
 				Priority:   5,
 				CreatedAt:  time.Now(),
 				RetryCount: -1,
@@ -262,15 +266,19 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 		},
 		{
 			name: "completed job without completedAt",
-			job: &JobMetadataModel{
-				JobID:     "123e4567-e89b-12d3-a456-426614174000",
-				Name:      "test-job",
-				Status:    JobStatusCompleted,
-				Priority:  5,
-				CreatedAt: time.Now(),
-			},
+			job: func() *JobMetadataModel {
+				started := time.Now()
+				return &JobMetadataModel{
+					JobID:     "123e4567-e89b-12d3-a456-426614174000",
+					Name:      "test-job",
+					Status:    JobStatusCompleted,
+					Priority:  5,
+					CreatedAt: time.Now(),
+					StartedAt: &started,
+				}
+			}(),
 			wantErr: true,
-			errMsg:  "terminal status job must have completedAt timestamp",
+			errMsg:  "completed or cancelled job must have completedAt timestamp",
 		},
 		{
 			name: "failed job without error message",
@@ -321,15 +329,15 @@ func TestJobMetadataModel_SetStatus(t *testing.T) {
 		checkComplete bool
 	}{
 		{
-			name:          "pending to running",
-			initialStatus: JobStatusPending,
+			name:          "dispatched to running",
+			initialStatus: JobStatusDispatched,
 			targetStatus:  JobStatusRunning,
 			wantErr:       false,
 			checkStarted:  true,
 		},
 		{
-			name:          "pending to cancelled",
-			initialStatus: JobStatusPending,
+			name:          "pending_dispatch to cancelled",
+			initialStatus: JobStatusPendingDispatch,
 			targetStatus:  JobStatusCancelled,
 			wantErr:       false,
 			checkComplete: true,
@@ -356,8 +364,8 @@ func TestJobMetadataModel_SetStatus(t *testing.T) {
 			checkComplete: true,
 		},
 		{
-			name:          "pending to completed (invalid)",
-			initialStatus: JobStatusPending,
+			name:          "pending_dispatch to completed (invalid)",
+			initialStatus: JobStatusPendingDispatch,
 			targetStatus:  JobStatusCompleted,
 			wantErr:       true,
 		},
@@ -405,24 +413,37 @@ func TestJobMetadataModel_SetStatus(t *testing.T) {
 	}
 }
 
-// TestJobMetadataModel_SetError tests error handling
-func TestJobMetadataModel_SetError(t *testing.T) {
-	t.Run("sets error and transitions to failed", func(t *testing.T) {
+// TestJobMetadataModel_AddError tests error handling with history tracking
+func TestJobMetadataModel_AddError(t *testing.T) {
+	t.Run("adds error and transitions to failed", func(t *testing.T) {
 		job := &JobMetadataModel{
-			Status: JobStatusRunning,
+			Status:     JobStatusRunning,
+			RetryCount: 0,
 		}
 
-		testErr := errors.New("test error")
-		err := job.SetError(testErr)
+		testErr := errors.New("test error message")
+		err := job.AddError(testErr)
 
 		if err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-		if job.Error != "test error" {
-			t.Errorf("error = %s, want test error", job.Error)
+			t.Fatalf("AddError() returned error: %v", err)
 		}
 		if job.Status != JobStatusFailed {
-			t.Errorf("status = %s, want %s", job.Status, JobStatusFailed)
+			t.Errorf("status = %s, want failed", job.Status)
+		}
+		if len(job.Errors) != 1 {
+			t.Fatalf("len(Errors) = %d, want 1", len(job.Errors))
+		}
+		if job.Errors[0].Error != "test error message" {
+			t.Errorf("Errors[0].Error = %s, want test error message", job.Errors[0].Error)
+		}
+		if job.Errors[0].Type != JobErrorTypeExecution {
+			t.Errorf("Errors[0].Type = %s, want execution", job.Errors[0].Type)
+		}
+		if job.Errors[0].RetryAttempt != 0 {
+			t.Errorf("Errors[0].RetryAttempt = %d, want 0", job.Errors[0].RetryAttempt)
+		}
+		if job.Errors[0].Timestamp.IsZero() {
+			t.Error("Errors[0].Timestamp should be set")
 		}
 		if job.CompletedAt == nil {
 			t.Error("expected completedAt to be set")
@@ -431,16 +452,99 @@ func TestJobMetadataModel_SetError(t *testing.T) {
 
 	t.Run("handles nil error", func(t *testing.T) {
 		job := &JobMetadataModel{
-			Status: JobStatusRunning,
+			Status:     JobStatusRunning,
+			RetryCount: 0,
 		}
 
-		err := job.SetError(nil)
+		err := job.AddError(nil)
 
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
-		if job.Error != "" {
-			t.Errorf("error should be empty, got %s", job.Error)
+		if len(job.Errors) != 0 {
+			t.Errorf("errors array should be empty, got length %d", len(job.Errors))
+		}
+	})
+}
+
+// TestJobMetadataModel_AddError_MultipleRetries tests error history across retry attempts
+func TestJobMetadataModel_AddError_MultipleRetries(t *testing.T) {
+	job := &JobMetadataModel{
+		Status:     JobStatusRunning,
+		RetryCount: 0,
+	}
+
+	// First error
+	if err := job.AddError(errors.New("first error")); err != nil {
+		t.Fatalf("AddError() returned error: %v", err)
+	}
+	if len(job.Errors) != 1 {
+		t.Fatalf("len(Errors) = %d, want 1", len(job.Errors))
+	}
+	if job.Errors[0].RetryAttempt != 0 {
+		t.Errorf("Errors[0].RetryAttempt = %d, want 0", job.Errors[0].RetryAttempt)
+	}
+	if job.Errors[0].Error != "first error" {
+		t.Errorf("Errors[0].Error = %s, want 'first error'", job.Errors[0].Error)
+	}
+
+	// Simulate retry
+	job.RetryCount = 1
+	job.Status = JobStatusRunning
+
+	// Second error
+	if err := job.AddError(errors.New("second error")); err != nil {
+		t.Fatalf("AddError() returned error: %v", err)
+	}
+	if len(job.Errors) != 2 {
+		t.Fatalf("len(Errors) = %d, want 2", len(job.Errors))
+	}
+	if job.Errors[1].RetryAttempt != 1 {
+		t.Errorf("Errors[1].RetryAttempt = %d, want 1", job.Errors[1].RetryAttempt)
+	}
+	if job.Errors[1].Error != "second error" {
+		t.Errorf("Errors[1].Error = %s, want 'second error'", job.Errors[1].Error)
+	}
+
+	// Verify timestamps are ordered
+	if !job.Errors[1].Timestamp.After(job.Errors[0].Timestamp) && !job.Errors[1].Timestamp.Equal(job.Errors[0].Timestamp) {
+		t.Error("second error timestamp should be after or equal to first error timestamp")
+	}
+}
+
+// TestJobMetadataModel_GetLatestError tests the convenience method for getting the most recent error
+func TestJobMetadataModel_GetLatestError(t *testing.T) {
+	t.Run("returns empty string for no errors", func(t *testing.T) {
+		job := &JobMetadataModel{Errors: []JobError{}}
+
+		if got := job.GetLatestError(); got != "" {
+			t.Errorf("GetLatestError() = %s, want empty string", got)
+		}
+	})
+
+	t.Run("returns latest error message", func(t *testing.T) {
+		job := &JobMetadataModel{
+			Errors: []JobError{
+				{RetryAttempt: 0, Error: "first error", Timestamp: time.Now()},
+				{RetryAttempt: 1, Error: "second error", Timestamp: time.Now()},
+				{RetryAttempt: 2, Error: "third error", Timestamp: time.Now()},
+			},
+		}
+
+		if got := job.GetLatestError(); got != "third error" {
+			t.Errorf("GetLatestError() = %s, want 'third error'", got)
+		}
+	})
+
+	t.Run("returns single error", func(t *testing.T) {
+		job := &JobMetadataModel{
+			Errors: []JobError{
+				{RetryAttempt: 0, Error: "only error", Timestamp: time.Now()},
+			},
+		}
+
+		if got := job.GetLatestError(); got != "only error" {
+			t.Errorf("GetLatestError() = %s, want 'only error'", got)
 		}
 	})
 }
@@ -650,3 +754,39 @@ func TestJobMetadataModel_Age(t *testing.T) {
 func TestJobMetadataModel_InterfaceCompliance(t *testing.T) {
 	var _ JobMetadata = (*JobMetadataModel)(nil)
 }
+
+func TestAsJobModel_AcceptsModel(t *testing.T) {
+	job := NewJobMetadata("123e4567-e89b-12d3-a456-426614174000", "test-job", nil)
+
+	got, err := AsJobModel(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != job {
+		t.Fatal("expected same model pointer")
+	}
+}
+
+func TestAsJobModel_RejectsUnexpectedType(t *testing.T) {
+	_, err := AsJobModel(bogusJobMetadata{})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+type bogusJobMetadata struct{}
+
+func (bogusJobMetadata) GetJobID() string            { return "job-1" }
+func (bogusJobMetadata) GetName() string             { return "x" }
+func (bogusJobMetadata) GetStatus() JobStatus        { return JobStatusPendingDispatch }
+func (bogusJobMetadata) GetPriority() int            { return 5 }
+func (bogusJobMetadata) GetCreatedAt() time.Time     { return time.Now() }
+func (bogusJobMetadata) GetStartedAt() *time.Time    { return nil }
+func (bogusJobMetadata) GetCompletedAt() *time.Time  { return nil }
+func (bogusJobMetadata) GetPayload() any             { return nil }
+func (bogusJobMetadata) GetMetadata() map[string]any { return nil }
+func (bogusJobMetadata) GetErrors() []JobError       { return nil }
+func (bogusJobMetadata) GetLatestError() string      { return "" }
+func (bogusJobMetadata) GetRetryCount() int          { return 0 }
+func (bogusJobMetadata) GetTags() []string           { return nil }
+func (bogusJobMetadata) Validate() error             { return nil }

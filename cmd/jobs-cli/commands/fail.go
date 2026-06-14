@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 	"github.com/daconjurer/jobby/cmd/jobs-cli/output"
 	"github.com/spf13/cobra"
 )
@@ -14,7 +14,7 @@ type messageResponse struct {
 	Message string `json:"message"`
 }
 
-func NewFailCmd(a *app.App) *cobra.Command {
+func NewFailCmd(c *cli.CLI) *cobra.Command {
 	var errMsg string
 
 	cmd := &cobra.Command{
@@ -22,7 +22,7 @@ func NewFailCmd(a *app.App) *cobra.Command {
 		Short: "Mark a job as failed",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return RunFail(cmd.Context(), a, args[0], errMsg)
+			return RunFail(cmd.Context(), c, args[0], errMsg)
 		},
 	}
 
@@ -32,14 +32,14 @@ func NewFailCmd(a *app.App) *cobra.Command {
 	return cmd
 }
 
-func RunFail(ctx context.Context, a *app.App, jobID, errMsg string) error {
+func RunFail(ctx context.Context, c *cli.CLI, jobID, errMsg string) error {
 	if errMsg == "" {
 		return errors.New("error is required")
 	}
 
-	if err := a.Service.FailJob(ctx, jobID, fmt.Errorf("%s", errMsg)); err != nil {
+	if err := c.Service.FailJob(ctx, jobID, fmt.Errorf("%s", errMsg)); err != nil {
 		return mapJobNotFound(err)
 	}
 
-	return output.WriteJSON(a.Out, messageResponse{Message: "job marked as failed"})
+	return output.WriteJSON(c.Out, messageResponse{Message: "job marked as failed"})
 }

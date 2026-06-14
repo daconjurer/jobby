@@ -36,7 +36,13 @@ func WriteStatsTable(w io.Writer, stats service.JobStats) error {
 	if err := writeLine(tw, "STATUS\tCOUNT"); err != nil {
 		return err
 	}
-	if err := writeFormat(tw, "pending\t%d\n", stats.Pending); err != nil {
+	if err := writeFormat(tw, "pending_dispatch\t%d\n", stats.PendingDispatch); err != nil {
+		return err
+	}
+	if err := writeFormat(tw, "dispatched\t%d\n", stats.Dispatched); err != nil {
+		return err
+	}
+	if err := writeFormat(tw, "dispatch_failed\t%d\n", stats.DispatchFailed); err != nil {
 		return err
 	}
 	if err := writeFormat(tw, "running\t%d\n", stats.Running); err != nil {

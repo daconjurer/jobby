@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/jobs/mongodb"
 )
 
 var jobsEnvMongoKeys = []string{
@@ -18,6 +18,10 @@ var jobsEnvMongoKeys = []string{
 	"MONGODB_TIMEOUT",
 	"MONGODB_MAX_POOL_SIZE",
 	"MONGODB_MIN_POOL_SIZE",
+}
+
+var jobsEnvTopicsKeys = []string{
+	"JOB_TOPICS_CONFIG_PATH",
 }
 
 func temporaryUnsetEnv(t *testing.T, keys ...string) {
@@ -64,7 +68,7 @@ func TestLoadMongoMetadataConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadMongoMetadataConfig: %v", err)
 	}
-	want := metadata.MongoConfig{
+	want := mongodb.MongoConfig{
 		URI:                uri,
 		Database:           db,
 		CollectionMetadata: metaColl,
@@ -94,6 +98,31 @@ func TestLoadMongoMetadataConfig_ValidationFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "validating mongo config") {
 		t.Fatalf("expected validation wrap, got: %v", err)
+	}
+}
+
+func TestLoadJobTopicsConfig(t *testing.T) {
+	temporaryUnsetEnv(t, jobsEnvTopicsKeys...)
+	t.Setenv("JOB_TOPICS_CONFIG_PATH", "config/job-topics.yaml")
+
+	got, err := loadJobTopicsConfig()
+	if err != nil {
+		t.Fatalf("loadJobTopicsConfig: %v", err)
+	}
+	if got.ConfigPath != "config/job-topics.yaml" {
+		t.Fatalf("ConfigPath=%q", got.ConfigPath)
+	}
+}
+
+func TestLoadJobTopicsConfig_Default(t *testing.T) {
+	temporaryUnsetEnv(t, jobsEnvTopicsKeys...)
+
+	got, err := loadJobTopicsConfig()
+	if err != nil {
+		t.Fatalf("loadJobTopicsConfig: %v", err)
+	}
+	if got.ConfigPath != "config/job-topics.yaml" {
+		t.Fatalf("ConfigPath=%q want default", got.ConfigPath)
 	}
 }
 

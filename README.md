@@ -18,15 +18,14 @@ Install [Task](https://taskfile.dev/installation/) so you can run automation fro
 # Run unit tests
 task test
 
-# Full stack in Docker (MongoDB, migrate, HTTP API on :3001)
+# Full stack in Docker (MongoDB, Pulsar, migrate, HTTP API on :3001, dispatch worker)
 task docker-up
 curl http://localhost:3001/health
 
-# Or: MongoDB + migrate only, then run the server on the host
+# Or: MongoDB + migrate only, then run binaries on the host
 task mongo-up
-task run-jobs-server
-# or shorthand
-task run
+task run-jobs-server          # HTTP API (shorthand: task run)
+task run-jobs-dispatcher      # needs Pulsar (e.g. from compose) — see docs/dev/setup.md
 ```
 
 ## CI
@@ -36,5 +35,8 @@ Pull requests and pushes to **`main`** run GitHub Actions (format + lint via Tas
 ## Documentation
 
 All documentation lives in the [docs](./docs) folder.
-The [development setup](./docs/dev/setup.md) is a good starting point and the
-[architecture overview](./docs/architecture/intro.md) provides technical details.
+
+- [Development setup](./docs/dev/setup.md) — Docker Compose, env vars, tests
+- [Architecture overview](./docs/architecture/intro.md) — services, packages, dispatch flow
+- [Job dispatch saga](./docs/architecture/job-saga.md) — enqueue → Pulsar → status confirmation
+- [Dispatch worker](./docs/architecture/dispatch-worker.md) — change stream, poll fallback, wiring

@@ -9,6 +9,34 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
+func TestPulsarConfig_Validate_InvalidServiceURL(t *testing.T) {
+	c := PulsarConfig{
+		ServiceURL:       "http://localhost:6650",
+		SubscriptionName: "jobber",
+	}
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "PULSAR_SERVICE_URL") || !strings.Contains(err.Error(), "pulsar://") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPulsarConfig_Validate_EmptySubscriptionName(t *testing.T) {
+	c := PulsarConfig{
+		ServiceURL:       "pulsar://localhost:6650",
+		SubscriptionName: "   ",
+	}
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "PULSAR_SUBSCRIPTION_NAME") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestMongoConfig_Validate_MaxLessThanMin(t *testing.T) {
 	c := MongoConfig{
 		MaxPoolSize: 5,

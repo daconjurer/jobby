@@ -50,7 +50,7 @@ func TestListCommand_BuildsFilter(t *testing.T) {
 			skip:     5,
 			sortBy:   "priority",
 			sortDesc: false,
-			status:   "pending",
+			status:   "pending_dispatch",
 			tags:     []string{"a", "b"},
 			names:    []string{"job-a"},
 			want: metadata.ListFilter{
@@ -58,7 +58,7 @@ func TestListCommand_BuildsFilter(t *testing.T) {
 				Skip:     5,
 				SortBy:   "priority",
 				SortDesc: false,
-				Statuses: []metadata.JobStatus{metadata.JobStatusPending},
+				Statuses: []metadata.JobStatus{metadata.JobStatusPendingDispatch},
 				Tags:     []string{"a", "b"},
 				Names:    []string{"job-a"},
 			},

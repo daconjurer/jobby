@@ -2,9 +2,82 @@ package config
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestLoadInto_Pulsar_HappyPath(t *testing.T) {
+	temporaryUnsetEnv(t, pulsarEnvKeys...)
+	const wantURL = "pulsar://localhost:6650"
+	const wantSub = "my-executor"
+	t.Setenv("PULSAR_SERVICE_URL", wantURL)
+	t.Setenv("PULSAR_SUBSCRIPTION_NAME", wantSub)
+
+	var cfg PulsarConfig
+	if err := LoadInto(&cfg); err != nil {
+		t.Fatalf("LoadInto: %v", err)
+	}
+	if cfg.ServiceURL != wantURL || cfg.SubscriptionName != wantSub {
+		t.Fatalf("unexpected pulsar config: %+v", cfg)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+}
+
+func TestLoadInto_Pulsar_DefaultSubscriptionName(t *testing.T) {
+	temporaryUnsetEnv(t, pulsarEnvKeys...)
+	t.Setenv("PULSAR_SERVICE_URL", "pulsar://localhost:6650")
+
+	var cfg PulsarConfig
+	if err := LoadInto(&cfg); err != nil {
+		t.Fatalf("LoadInto: %v", err)
+	}
+	if cfg.SubscriptionName != "jobber" {
+		t.Fatalf("SubscriptionName default: got %q want jobber", cfg.SubscriptionName)
+	}
+}
+
+func TestLoadInto_Pulsar_MissingServiceURL(t *testing.T) {
+	temporaryUnsetEnv(t, pulsarEnvKeys...)
+
+	var cfg PulsarConfig
+	err := LoadInto(&cfg)
+	if err == nil {
+		t.Fatal("expected error when PULSAR_SERVICE_URL is missing")
+	}
+	t.Log(err)
+}
+
+func TestLoadInto_Pulsar_EmptyServiceURL(t *testing.T) {
+	temporaryUnsetEnv(t, pulsarEnvKeys...)
+	t.Setenv("PULSAR_SERVICE_URL", "")
+
+	var cfg PulsarConfig
+	err := LoadInto(&cfg)
+	if err == nil {
+		t.Fatal("expected error when PULSAR_SERVICE_URL is empty")
+	}
+	t.Log(err)
+}
+
+func TestLoadIntoThenValidate_Pulsar_InvalidURL(t *testing.T) {
+	temporaryUnsetEnv(t, pulsarEnvKeys...)
+	t.Setenv("PULSAR_SERVICE_URL", "not-pulsar")
+
+	var cfg PulsarConfig
+	if err := LoadInto(&cfg); err != nil {
+		t.Fatalf("LoadInto: %v", err)
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "PULSAR_SERVICE_URL") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
 
 func TestLoadInto_Mongo_AllRequiredPresent(t *testing.T) {
 	temporaryUnsetEnv(t, mongoEnvKeys...)

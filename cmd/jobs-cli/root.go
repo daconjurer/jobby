@@ -1,12 +1,12 @@
 package main
 
 import (
-	"github.com/daconjurer/jobby/cmd/jobs-cli/app"
+	"github.com/daconjurer/jobby/cmd/jobs-cli/cli"
 	"github.com/daconjurer/jobby/cmd/jobs-cli/commands"
 	"github.com/spf13/cobra"
 )
 
-func newRootCmd(a *app.App) *cobra.Command {
+func newRootCmd(c *cli.CLI) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "jobs-cli",
 		Short: "Operate on job metadata in MongoDB",
@@ -22,23 +22,23 @@ Use --output json (default) for scripting, or --output table for human-readable 
 			if err != nil {
 				return
 			}
-			a.Format = app.OutputFormat(format)
+			c.Format = cli.OutputFormat(format)
 		},
 	}
 
-	root.PersistentFlags().String("output", string(app.OutputJSON), "Output format: json or table")
+	root.PersistentFlags().String("output", string(cli.OutputJSON), "Output format: json or table")
 
 	root.AddCommand(
-		commands.NewPingCmd(a),
-		commands.NewCreateCmd(a),
-		commands.NewGetCmd(a),
-		commands.NewListCmd(a),
-		commands.NewStatsCmd(a),
-		commands.NewFailCmd(a),
-		commands.NewCancelCmd(a),
-		commands.NewRetryCmd(a),
-		commands.NewLogsCmd(a),
-		commands.NewSeedCmd(a),
+		commands.NewPingCmd(c),
+		commands.NewCreateCmd(c),
+		commands.NewGetCmd(c),
+		commands.NewListCmd(c),
+		commands.NewStatsCmd(c),
+		commands.NewFailCmd(c),
+		commands.NewCancelCmd(c),
+		commands.NewRetryCmd(c),
+		commands.NewLogsCmd(c),
+		commands.NewSeedCmd(c),
 	)
 
 	return root

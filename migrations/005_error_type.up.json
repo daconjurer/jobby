@@ -1,0 +1,153 @@
+[
+  {
+    "comment": "Step 1: Backfill type on existing errors entries (dispatch_failed → dispatch, otherwise execution)",
+    "update": "job_metadata",
+    "updates": [
+      {
+        "q": {
+          "errors": { "$exists": true, "$not": { "$size": 0 } }
+        },
+        "u": [
+          {
+            "$set": {
+              "errors": {
+                "$map": {
+                  "input": "$errors",
+                  "as": "err",
+                  "in": {
+                    "$mergeObjects": [
+                      "$$err",
+                      {
+                        "type": {
+                          "$ifNull": [
+                            "$$err.type",
+                            {
+                              "$cond": {
+                                "if": { "$eq": ["$status", "dispatch_failed"] },
+                                "then": "dispatch",
+                                "else": "execution"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "multi": true
+      }
+    ]
+  },
+  {
+    "comment": "Step 2: Require type on errors[] items (execution | dispatch)",
+    "collMod": "job_metadata",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["jobId", "name", "status", "createdAt"],
+        "properties": {
+          "jobId": {
+            "bsonType": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "name": {
+            "bsonType": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "status": {
+            "enum": [
+              "pending_dispatch",
+              "dispatched",
+              "dispatch_failed",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "errors": {
+            "bsonType": ["array", "null"],
+            "description": "Array of error history across retries",
+            "items": {
+              "bsonType": "object",
+              "required": ["type", "retryAttempt", "error", "timestamp"],
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "bsonType": "string",
+                  "enum": ["execution", "dispatch"],
+                  "description": "Error origin: execution handler or dispatch relay"
+                },
+                "retryAttempt": {
+                  "bsonType": "int",
+                  "minimum": 0,
+                  "description": "Retry attempt number (0 = first attempt)"
+                },
+                "error": {
+                  "bsonType": "string",
+                  "description": "Error message"
+                },
+                "timestamp": {
+                  "bsonType": "date",
+                  "description": "When error occurred (UTC)"
+                }
+              }
+            }
+          },
+          "retryCount": {
+            "bsonType": "int",
+            "minimum": 0
+          },
+          "priority": {
+            "bsonType": "int",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "startedAt": {
+            "bsonType": ["date", "null"]
+          },
+          "completedAt": {
+            "bsonType": ["date", "null"]
+          },
+          "payload": {
+            "bsonType": "object"
+          },
+          "metadata": {
+            "bsonType": "object"
+          },
+          "tags": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "string"
+            },
+            "uniqueItems": true
+          },
+          "topic": {
+            "bsonType": "string",
+            "minLength": 1
+          },
+          "dispatchAttempts": {
+            "bsonType": "int",
+            "minimum": 0
+          },
+          "dispatchLastError": {
+            "bsonType": ["string", "null"]
+          },
+          "dispatchedAt": {
+            "bsonType": ["date", "null"]
+          }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  }
+]

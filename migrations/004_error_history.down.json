@@ -1,0 +1,125 @@
+[
+  {
+    "comment": "Step 1: Restore latest error from errors array to error field",
+    "update": "job_metadata",
+    "updates": [
+      {
+        "q": {
+          "errors": { "$exists": true, "$ne": [], "$ne": null }
+        },
+        "u": [
+          {
+            "$set": {
+              "error": {
+                "$let": {
+                  "vars": {
+                    "lastError": { "$arrayElemAt": ["$errors", -1] }
+                  },
+                  "in": "$$lastError.error"
+                }
+              }
+            }
+          }
+        ],
+        "multi": true
+      }
+    ]
+  },
+  {
+    "comment": "Step 2: Remove errors array from all documents",
+    "update": "job_metadata",
+    "updates": [
+      {
+        "q": {},
+        "u": {
+          "$unset": { "errors": "" }
+        },
+        "multi": true
+      }
+    ]
+  },
+  {
+    "comment": "Step 3: Restore original validator with error field",
+    "collMod": "job_metadata",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["jobId", "name", "status", "createdAt"],
+        "properties": {
+          "jobId": {
+            "bsonType": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "name": {
+            "bsonType": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "status": {
+            "enum": [
+              "pending_dispatch",
+              "dispatched",
+              "dispatch_failed",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "description": "Job lifecycle: dispatch phase then execution phase"
+          },
+          "priority": {
+            "bsonType": "int",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "startedAt": {
+            "bsonType": ["date", "null"]
+          },
+          "completedAt": {
+            "bsonType": ["date", "null"]
+          },
+          "payload": {
+            "bsonType": "object"
+          },
+          "metadata": {
+            "bsonType": "object"
+          },
+          "error": {
+            "bsonType": ["string", "null"],
+            "description": "Error message if job failed (null if successful)"
+          },
+          "retryCount": {
+            "bsonType": "int",
+            "minimum": 0
+          },
+          "tags": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "string"
+            },
+            "uniqueItems": true
+          },
+          "topic": {
+            "bsonType": "string",
+            "minLength": 1
+          },
+          "dispatchAttempts": {
+            "bsonType": "int",
+            "minimum": 0
+          },
+          "dispatchLastError": {
+            "bsonType": ["string", "null"]
+          },
+          "dispatchedAt": {
+            "bsonType": ["date", "null"]
+          }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  }
+]
