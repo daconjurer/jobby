@@ -1,5 +1,3 @@
-//go:build integration
-
 package integrationtest
 
 import (
@@ -26,6 +24,7 @@ const integrationPollInterval = 200 * time.Millisecond
 
 func integrationMongoEnv(tb testing.TB) mongodb.MongoConfig {
 	tb.Helper()
+	testutil.SkipUnlessIntegration(tb)
 	if testing.Short() {
 		tb.Skip("skipping integration test (-short)")
 	}
@@ -58,6 +57,7 @@ func integrationMongoEnv(tb testing.TB) mongodb.MongoConfig {
 
 func integrationPulsarEnv(tb testing.TB) config.PulsarConfig {
 	tb.Helper()
+	testutil.SkipUnlessIntegration(tb)
 	if testing.Short() {
 		tb.Skip("skipping integration test (-short)")
 	}

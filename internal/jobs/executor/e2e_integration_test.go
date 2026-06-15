@@ -1,5 +1,3 @@
-//go:build integration
-
 package executor
 
 import (
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/testutil"
 )
 
 // E2E integration test that exercises the full job execution pipeline:
@@ -26,10 +25,11 @@ import (
 // - Full stack running: docker compose up (mongodb, pulsar, jobs-server, jobs-dispatcher, jobs-executor)
 // - Or: JOBS_API_BASE_URL env var pointing to jobs-server (default: http://localhost:3001)
 //
-// Run: task test-integration
-// Or: go test -tags=integration -v ./internal/jobs/executor -run TestE2EIntegration
+// Run: task test-e2e
+// Or: INTEGRATION_TESTS=true go test -v ./internal/jobs/executor -run TestE2EIntegration
 
 func TestE2EIntegration_EchoJobExecution(t *testing.T) {
+	testutil.SkipUnlessIntegration(t)
 	if testing.Short() {
 		t.Skip("skipping e2e integration test (-short)")
 	}
