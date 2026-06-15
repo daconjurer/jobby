@@ -59,6 +59,7 @@ func preparePollOnlyFailureRuntime(
 	tb.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	tb.Cleanup(cancel)
 
 	reader, writer, mongoClient, err := mongodb.OpenMongoJobs(ctx, cfg.Mongo)
 	if err != nil {

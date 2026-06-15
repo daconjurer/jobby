@@ -38,7 +38,6 @@ func TestIntegration_ExecutorSaga_DispatchedToCompleted(t *testing.T) {
 	h := newDispatchHarness(t, dispatchruntime.Options{})
 
 	const jobName = "account-lifecycle"
-	const wantTopic = "persistent://public/default/accounts/jobs"
 
 	// Create registry and register echo handler
 	registry := executor.NewRegistry()
@@ -55,7 +54,7 @@ func TestIntegration_ExecutorSaga_DispatchedToCompleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPulsarClient: %v", err)
 	}
-	defer pulsarClient.Close()
+	defer func() { _ = pulsarClient.Close() }()
 
 	// Get topics from resolver
 	resolver, err := jobpulsar.NewFileTopicResolver(testutil.JobTopicsConfigPath(t))
@@ -71,7 +70,7 @@ func TestIntegration_ExecutorSaga_DispatchedToCompleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPulsarJobConsumer: %v", err)
 	}
-	defer consumer.Close()
+	defer func() { _ = consumer.Close() }()
 
 	// Start consumer in background
 	consumerCtx, cancelConsumer := context.WithCancel(context.Background())

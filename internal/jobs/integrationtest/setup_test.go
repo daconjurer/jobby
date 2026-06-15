@@ -195,19 +195,6 @@ func newDispatchHarness(tb testing.TB, opts dispatchruntime.Options) *dispatchHa
 	return h
 }
 
-func newDispatchSagaHarness(tb testing.TB) *dispatchHarness {
-	tb.Helper()
-	return newDispatchHarness(tb, dispatchruntime.Options{})
-}
-
-func (h *dispatchHarness) stopRuntime(tb testing.TB) {
-	tb.Helper()
-	h.cancel()
-	if err := h.runtime.Close(); err != nil {
-		tb.Fatalf("runtime.Close: %v", err)
-	}
-}
-
 func startDispatchRuntime(
 	tb testing.TB,
 	cfg dispatchruntime.Config,
