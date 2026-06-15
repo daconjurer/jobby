@@ -3,6 +3,7 @@ Dev setup
 
 Local automation uses **[Task](https://taskfile.dev/installation/)** (`go install`-able or distro packages — see upstream docs).
 Tasks are declared in **[Taskfile.yml](../../Taskfile.yml)** at repo root (`task --list` to discover names).
+Integration test tasks live in **[taskfiles/integration/Taskfile.yml](../../taskfiles/integration/Taskfile.yml)** (included with `flatten: true`, so names like `task test-integration` stay unchanged).
 
 Then get started with:
 
@@ -51,7 +52,8 @@ task mongo-up    # mongodb + migrate only (for host go run / integration tests)
 | Dispatch on host | `task mongo-up` + Pulsar, then `task run-jobs-dispatcher` | Same Mongo URI; **`PULSAR_SERVICE_URL`** / **`DISPATCH_*`** from `.env` |
 | Executor on host | `task mongo-up` + Pulsar, then `task run-jobs-executor` | Same Mongo URI; **`PULSAR_SERVICE_URL`** / **`JOB_TOPICS_CONFIG_PATH`** from `.env` |
 | Integration tests | `task mongo-up` then `task test-integration` | Same **`MONGODB_URI`** (Task loads `.env`) |
-| E2E tests | `task docker-up` then `task test-integration` | Full stack required (executor completes jobs) |
+| E2E tests | `task docker-up` then `task test-e2e` | Full stack required (executor completes jobs) |
+| Single integration category | See [integration test categories](#integration-test-categories) below | Compose subset per category |
 
 If **`migrate`** fails, **`jobs-server`** does not start (`depends_on: service_completed_successfully`). Fix migrate logs first (`docker compose logs migrate`). For a clean database reset: `task mongo-reset` then `task mongo-up` (or `docker compose down -v`).
 
@@ -120,8 +122,47 @@ Apply migrations through **`005_error_type`** (`task mongo-up` or `task docker-u
 
 # Tests
 
-- **`task test`** — `go test ./...` (unit tests; no integration tag).
-- **`task test-integration`** — runs tests with `-tags=integration` (see [Taskfile.yml](../../Taskfile.yml)); loads **`.env`** automatically. Requires MongoDB (e.g. `task mongo-up`) and a host **`MONGODB_URI`** with **`replicaSet=rs0`** and **`directConnection=true`** (see [**.env.example**](../../.env.example)). Saga tests in **`internal/jobs/integrationtest/`** also need Pulsar (`docker compose up -d pulsar`) and **`PULSAR_SERVICE_URL`**; they skip when the broker env is unset.
+Integration tests no longer use the Go **`integration` build tag**. They are always compiled (so gopls analyzes them) and **skip at runtime** unless **`INTEGRATION_TESTS`** is truthy (`true`, `1`, or `yes`). Shared helpers call **`testutil.SkipUnlessIntegration`**.
+
+- **`task test`** — `go test ./...` without **`INTEGRATION_TESTS`**; unit tests run, integration tests skip.
+- **`task test-integration`** — sets **`INTEGRATION_TESTS=true`**, loads **`.env`**, runs the full tree (`./...`). Requires MongoDB (e.g. `task mongo-up`) and host **`MONGODB_URI`** with **`replicaSet=rs0`** and **`directConnection=true`** (see [**.env.example**](../../.env.example)). Saga tests in **`internal/jobs/integrationtest/`** also need Pulsar (`docker compose up -d pulsar`) and **`PULSAR_SERVICE_URL`**; they skip when the broker env is unset. **`task test-e2e`** needs the full stack (`task docker-up`).
+
+## Integration test categories
+
+Integration tests are grouped by infrastructure dependencies (see [planning/tests-in-ci/phase-2.md](../../planning/tests-in-ci/phase-2.md)). Tasks live in **[taskfiles/integration/Taskfile.yml](../../taskfiles/integration/Taskfile.yml)** (included from the root Taskfile). Each category task sets **`INTEGRATION_TESTS=true`**, loads **`.env`**, and runs a fixed package path.
+
+| Category | Task | Compose services |
+|----------|------|------------------|
+| all | `task test-integration` | Full stack for E2E; Mongo + Pulsar for dispatch |
+| mongodb | `task test-integration-mongodb` | `mongodb`, `mongo-init`, `migrate` (`task mongo-up`) |
+| pulsar | `task test-integration-pulsar` | `pulsar` |
+| dispatch | `task test-integration-dispatch` | `mongodb`, `mongo-init`, `migrate`, `pulsar` |
+| http | `task test-integration-http` | `mongodb`, `mongo-init`, `migrate` |
+| cli | `task test-integration-cli` | `mongodb`, `mongo-init`, `migrate` |
+| e2e | `task test-e2e` | Full stack (`task docker-up`) |
+
+CI integration jobs should call the matching **`task test-integration-*`** recipe (Phase 5) — no workflow env vars required.
+
+```sh
+# Full suite (needs Mongo + Pulsar; E2E needs full stack)
+task mongo-up
+docker compose up -d pulsar
+task test-integration
+
+# Single category
+task mongo-up
+task test-integration-mongodb
+
+# E2E (full stack)
+task docker-up
+task test-e2e
+
+# Smoke test category → package mapping (no go test, no Compose)
+task test-integration-category-resolve
+
+# Manual go test (same semantics as Task)
+INTEGRATION_TESTS=true go test -v ./internal/jobs/mongodb/...
+```
 
 # jobs-cli examples
 

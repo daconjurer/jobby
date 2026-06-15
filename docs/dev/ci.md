@@ -22,7 +22,7 @@ The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, t
 2. **`docker/login-action`** — same Docker Hub auth as pre-tests
 3. Composite action **[`.github/actions/unit-test/`](../../.github/actions/unit-test)** runs **`task test`** inside the CI container.
 
-The unit-tests job runs **`go test ./...`** (via Task) without `-tags=integration`, executing only unit tests (fast, no infrastructure dependencies).
+The unit-tests job runs **`task test`** (`go test ./...` without **`INTEGRATION_TESTS`**). Integration-tagged tests skip at runtime; only unit tests execute (fast, no infrastructure dependencies). Integration jobs (Phase 5) call category tasks such as **`task test-integration-mongodb`**, which set **`INTEGRATION_TESTS=true`** internally.
 
 ### Go / Docker note
 
