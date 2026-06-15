@@ -1,0 +1,72 @@
+# Integration test tasks (included from root Taskfile.yml with flatten: true).
+# https://taskfile.dev/
+version: "3"
+
+vars:
+  INTEGRATION_TEST_FLAGS: '{{.INTEGRATION_TEST_FLAGS | default "-p 1 -parallel 1 -count=1"}}'
+  E2E_RUN_FILTER: ""
+
+tasks:
+  test-integration:
+    desc: Integration tests; loads .env; sets INTEGRATION_TESTS=true; needs MongoDB (see docs)
+    cmds:
+      - task: test-integration-category
+        vars:
+          CATEGORY_PACKAGES: ./...
+
+  test-integration-category:
+    internal: true
+    env:
+      INTEGRATION_TESTS: "true"
+    dotenv:
+      - .env
+    cmds:
+      - go test {{ .INTEGRATION_TEST_FLAGS }} {{ .E2E_RUN_FILTER }} -v {{ .CATEGORY_PACKAGES }}
+
+  test-integration-category-resolve:
+    desc: Smoke test TEST_CATEGORY → package mapping (no go test)
+    cmds:
+      - ./scripts/integration-category-resolve.sh
+
+  test-integration-mongodb:
+    desc: Integration tests — MongoDB category (mongodb, mongo-init, migrate)
+    cmds:
+      - task: test-integration-category
+        vars:
+          CATEGORY_PACKAGES: ./internal/jobs/mongodb/...
+
+  test-integration-pulsar:
+    desc: Integration tests — Pulsar category (pulsar only)
+    cmds:
+      - task: test-integration-category
+        vars:
+          CATEGORY_PACKAGES: ./internal/jobs/pulsar/...
+
+  test-integration-dispatch:
+    desc: Integration tests — dispatch saga category (mongodb + pulsar)
+    cmds:
+      - task: test-integration-category
+        vars:
+          CATEGORY_PACKAGES: ./internal/jobs/integrationtest/...
+
+  test-integration-http:
+    desc: Integration tests — HTTP handler category (mongodb)
+    cmds:
+      - task: test-integration-category
+        vars:
+          CATEGORY_PACKAGES: ./internal/jobs/http/...
+
+  test-integration-cli:
+    desc: Integration tests — jobs-cli category (mongodb)
+    cmds:
+      - task: test-integration-category
+        vars:
+          CATEGORY_PACKAGES: ./cmd/jobs-cli/commands/...
+
+  test-e2e:
+    desc: E2E integration tests (full stack); loads .env; needs task docker-up
+    cmds:
+      - task: test-integration-category
+        vars:
+          CATEGORY_PACKAGES: ./internal/jobs/executor/...
+          E2E_RUN_FILTER: -run TestE2EIntegration
