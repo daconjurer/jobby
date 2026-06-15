@@ -1,4 +1,3 @@
-
 package integrationtest
 
 import (
@@ -113,7 +112,7 @@ func TestIntegration_ExecutorSaga_DispatchedToCompleted(t *testing.T) {
 
 	// Wait for job to complete (may already be completed)
 	completed := waitForJobStatusOrBeyond(t, h.metadataSvc, job.JobID, metadata.JobStatusCompleted, 30*time.Second)
-	
+
 	// Verify the job went through the full lifecycle by checking timestamps
 	if completed.DispatchedAt == nil {
 		t.Fatal("expected dispatchedAt to be set (job was never dispatched)")
