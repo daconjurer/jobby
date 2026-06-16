@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
-# Smoke test: TEST_CATEGORY → Go package path mapping (Phase 4).
-# Mirrors Taskfile INTEGRATION_CATEGORY_PACKAGES resolution.
+# Resolve TEST_CATEGORY → Go package path (Phase 4).
+# Usage:
+#   ./scripts/integration-category-resolve.sh resolve   # uses TEST_CATEGORY env (default: all)
+#   ./scripts/integration-category-resolve.sh           # smoke test mapping
 set -eu
 
 resolve_category() {
@@ -19,6 +21,11 @@ resolve_category() {
     ;;
   esac
 }
+
+if [ "${1:-}" = "resolve" ]; then
+  resolve_category "${TEST_CATEGORY:-all}"
+  exit 0
+fi
 
 expected_mongodb='./internal/jobs/mongodb/...'
 expected_pulsar='./internal/jobs/pulsar/...'

@@ -136,12 +136,34 @@ Integration tests are grouped by infrastructure dependencies (see [planning/test
 | all | `task test-integration` | Full stack for E2E; Mongo + Pulsar for dispatch |
 | mongodb | `task test-integration-mongodb` | `mongodb`, `mongo-init`, `migrate` (`task mongo-up`) |
 | pulsar | `task test-integration-pulsar` | `pulsar` |
-| dispatch | `task test-integration-dispatch` | `mongodb`, `mongo-init`, `migrate`, `pulsar` |
+| dispatch | `task test-integration-dispatch` | `mongodb`, `mongo-init`, `migrate`, `pulsar` — **stop** `jobs-dispatcher` and `jobs-executor` (in-process workers conflict) |
 | http | `task test-integration-http` | `mongodb`, `mongo-init`, `migrate` |
 | cli | `task test-integration-cli` | `mongodb`, `mongo-init`, `migrate` |
-| e2e | `task test-e2e` | Full stack (`task docker-up`) |
+| e2e | `task test-e2e` | Full stack (`task docker-up`) — requires `jobs-dispatcher` and `jobs-executor` |
 
-CI integration jobs should call the matching **`task test-integration-*`** recipe (Phase 5) — no workflow env vars required.
+**Container conflict:** In-process dispatch tests compete with running **`jobs-dispatcher`** / **`jobs-executor`** containers. Stop those services before **`task test-integration-dispatch`**; start them again for **`task test-e2e`**. CI runs one category per job, so this does not apply there. For local runs, prefer per-category tasks over **`task test-integration`** with **`docker-up`** (full stack breaks dispatch; without the app stack, E2E fails).
+
+```sh
+# Dispatch (Mongo + Pulsar only; no worker containers)
+task mongo-up
+docker compose up -d pulsar
+docker compose stop jobs-dispatcher jobs-executor
+task test-integration-dispatch
+
+# E2E (full stack)
+task docker-up
+task test-e2e
+
+# Switching after E2E → dispatch
+docker compose stop jobs-dispatcher jobs-executor
+task test-integration-dispatch
+
+# Switching after dispatch → E2E
+docker compose up -d jobs-server jobs-dispatcher jobs-executor
+task test-e2e
+```
+
+Convenience tasks set **`INTEGRATION_TESTS=true`** and **`TEST_CATEGORY`** internally. CI (Phase 5) can call either a convenience task or the core runner with explicit env:
 
 ```sh
 # Full suite (needs Mongo + Pulsar; E2E needs full stack)
@@ -149,9 +171,15 @@ task mongo-up
 docker compose up -d pulsar
 task test-integration
 
-# Single category
+# Single category (convenience task)
 task mongo-up
 task test-integration-mongodb
+
+# Explicit env (CI-style)
+INTEGRATION_TESTS=true TEST_CATEGORY=cli task test-integration-category
+
+# Skip integration (exits 0, logs skip)
+INTEGRATION_TESTS=false task test-integration-category
 
 # E2E (full stack)
 task docker-up
