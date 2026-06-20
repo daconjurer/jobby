@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"strings"
+
+	"github.com/daconjurer/jobby/internal/jobs/metadata"
 )
 
 // ExecutorService coordinates job execution with metadata transitions.
@@ -55,25 +57,40 @@ func (s *ExecutorService) ExecuteJob(ctx context.Context, jobID, name string, pa
 	}
 
 	// 4. Start job (atomic transition dispatched → running)
-	if err := s.lifecycle.StartJob(ctx, jobID); err != nil {
+	matched, err := s.lifecycle.StartJob(ctx, jobID)
+	if err != nil {
 		log.Printf("error: failed to start job %s: %v (nack for retry)", jobID, err)
 		return fmt.Errorf("start job: %w", err)
 	}
 
-	// 5. Execute handler (with panic recovery)
+	// 5. Pre-run gate: if StartJob didn't match, job wasn't dispatched (duplicate or terminal)
+	if !matched {
+		log.Printf("info: job %s not in dispatched state, skipping handler (duplicate delivery or already terminal)", jobID)
+		return nil
+	}
+
+	// 6. Execute handler (with panic recovery)
 	handlerErr := s.registry.Run(ctx, name, jobID, payload)
 
-	// 6. Update metadata based on result
+	// 7. Update metadata based on result
 	if handlerErr != nil {
 		log.Printf("error: handler execution failed for job %s (%s): %v", jobID, name, handlerErr)
 		if failErr := s.lifecycle.FailJob(ctx, jobID, handlerErr); failErr != nil {
+			if s.isTerminalConflict(failErr) {
+				log.Printf("warn: job %s already terminal, acking despite handler error", jobID)
+				return nil
+			}
 			log.Printf("error: failed to mark job %s as failed after handler error: %v", jobID, failErr)
 		}
 		return nil
 	}
 
-	// 7. Mark job as completed
+	// 8. Mark job as completed
 	if err := s.lifecycle.CompleteJob(ctx, jobID, nil); err != nil {
+		if s.isTerminalConflict(err) {
+			log.Printf("warn: job %s already terminal, acking despite handler success", jobID)
+			return nil
+		}
 		log.Printf("error: failed to mark job %s as completed: %v", jobID, err)
 		return fmt.Errorf("complete job: %w", err)
 	}
@@ -100,9 +117,14 @@ func (s *ExecutorService) validateArgs(jobID, name string, payload json.RawMessa
 // This catches malformed JSON early and allows us to fail-fast with ack.
 func (s *ExecutorService) testDecode(name, jobID string, payload json.RawMessage) error {
 	// We can't actually test decode without knowing the type, but we can at least validate it's valid JSON
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(payload, &raw); err != nil {
 		return fmt.Errorf("invalid JSON payload: %w", err)
 	}
 	return nil
+}
+
+// isTerminalConflict checks if an error indicates the job is already in a terminal state.
+func (s *ExecutorService) isTerminalConflict(err error) bool {
+	return errors.Is(err, metadata.ErrJobAlreadyTerminal)
 }

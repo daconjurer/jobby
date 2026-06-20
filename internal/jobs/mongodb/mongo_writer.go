@@ -258,3 +258,59 @@ func (w *MongoJobsWriter) MarkRunningIfDispatched(ctx context.Context, jobID str
 	}
 	return result.MatchedCount > 0, nil
 }
+
+// CompleteIfRunning sets status=completed when jobId matches and status=running.
+// Returns (true, nil) on match, (false, nil) if not running.
+func (w *MongoJobsWriter) CompleteIfRunning(ctx context.Context, jobID string, completedAt time.Time, meta *map[string]any) (bool, error) {
+	filter := bson.M{
+		"jobId":  jobID,
+		"status": metadata.JobStatusRunning,
+	}
+	setDoc := bson.M{
+		"status":      metadata.JobStatusCompleted,
+		"completedAt": completedAt,
+	}
+	if meta != nil {
+		setDoc["metadata"] = *meta
+	}
+	update := bson.M{"$set": setDoc}
+	result, err := w.metadataCollection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return false, fmt.Errorf("complete job if running: %w", err)
+	}
+	return result.MatchedCount > 0, nil
+}
+
+// FailIfNotTerminal appends execution error and sets status=failed when status is running or dispatched.
+// Returns (true, nil) on match, (false, nil) if already terminal or not fail-able.
+func (w *MongoJobsWriter) FailIfNotTerminal(ctx context.Context, jobID string, jobErr metadata.JobError, completedAt time.Time) (bool, error) {
+	filter := bson.M{
+		"jobId": jobID,
+		"status": bson.M{
+			"$in": []metadata.JobStatus{
+				metadata.JobStatusRunning,
+				metadata.JobStatusDispatched,
+			},
+		},
+	}
+	update := bson.A{
+		bson.M{
+			"$set": bson.M{
+				"status":      metadata.JobStatusFailed,
+				"completedAt": completedAt,
+				"startedAt":   bson.M{"$ifNull": bson.A{"$startedAt", completedAt}},
+				"errors": bson.M{
+					"$concatArrays": bson.A{
+						bson.M{"$ifNull": bson.A{"$errors", bson.A{}}},
+						bson.A{jobErr},
+					},
+				},
+			},
+		},
+	}
+	result, err := w.metadataCollection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return false, fmt.Errorf("fail job if not terminal: %w", err)
+	}
+	return result.MatchedCount > 0, nil
+}
