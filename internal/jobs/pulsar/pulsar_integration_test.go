@@ -1,5 +1,3 @@
-//go:build integration
-
 package pulsar
 
 import (
@@ -22,6 +20,7 @@ import (
 
 func integrationPulsarConfig(tb testing.TB) config.PulsarConfig {
 	tb.Helper()
+	testutil.SkipUnlessIntegration(tb)
 	if testing.Short() {
 		tb.Skip("skipping integration test (-short)")
 	}

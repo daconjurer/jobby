@@ -1,0 +1,6 @@
+name: unit-test
+description: Run unit tests via Task (dockerpaps/golang-for-ci)
+runs:
+  using: docker
+  image: dockerpaps/golang-for-ci:latest
+  entrypoint: .github/actions/unit-test/run.sh

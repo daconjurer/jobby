@@ -1,5 +1,3 @@
-//go:build integration
-
 package executor
 
 import (
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/testutil"
 )
 
 // E2E integration test that exercises the full job execution pipeline:
@@ -26,10 +25,11 @@ import (
 // - Full stack running: docker compose up (mongodb, pulsar, jobs-server, jobs-dispatcher, jobs-executor)
 // - Or: JOBS_API_BASE_URL env var pointing to jobs-server (default: http://localhost:3001)
 //
-// Run: task test-integration
-// Or: go test -tags=integration -v ./internal/jobs/executor -run TestE2EIntegration
+// Run: task test-e2e
+// Or: INTEGRATION_TESTS=true go test -v ./internal/jobs/executor -run TestE2EIntegration
 
 func TestE2EIntegration_EchoJobExecution(t *testing.T) {
+	testutil.SkipUnlessIntegration(t)
 	if testing.Short() {
 		t.Skip("skipping e2e integration test (-short)")
 	}
@@ -61,7 +61,7 @@ func TestE2EIntegration_EchoJobExecution(t *testing.T) {
 		if err != nil {
 			t.Fatalf("enqueue job: %v (is the stack running? docker compose up)", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -119,7 +119,7 @@ func TestE2EIntegration_EchoJobExecution(t *testing.T) {
 		if err != nil {
 			t.Fatalf("enqueue job: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -173,7 +173,7 @@ func TestE2EIntegration_EchoJobExecution(t *testing.T) {
 		if err != nil {
 			t.Fatalf("enqueue job: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -208,7 +208,7 @@ func TestE2EIntegration_EchoJobExecution(t *testing.T) {
 		if err != nil {
 			t.Fatalf("retry job: %v", err)
 		}
-		defer retryResp.Body.Close()
+		defer func() { _ = retryResp.Body.Close() }()
 		if retryResp.StatusCode != http.StatusOK {
 			retryBody, _ := io.ReadAll(retryResp.Body)
 			t.Fatalf("retry failed: status=%d body=%s", retryResp.StatusCode, retryBody)
@@ -278,7 +278,7 @@ func getJob(t *testing.T, client *http.Client, baseURL, jobID string) metadata.J
 	if err != nil {
 		t.Fatalf("get job: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -1,5 +1,3 @@
-//go:build integration
-
 package commands
 
 import (
@@ -22,6 +20,7 @@ import (
 
 func integrationMongoConfig(tb testing.TB) mongodb.MongoConfig {
 	tb.Helper()
+	testutil.SkipUnlessIntegration(tb)
 	if testing.Short() {
 		tb.Skip("skipping integration test (-short)")
 	}
