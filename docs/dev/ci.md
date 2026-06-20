@@ -9,7 +9,7 @@ The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, t
 
 - **`pre-tests`** — format and lint checks
 - **`unit-tests`** — unit test execution
-- **`integration-mongodb`** — MongoDB integration tests using runner Docker + Compose
+- **`integration-mongodb`** — MongoDB integration tests via reusable **[`integration-tests.yaml`](../../.github/workflows/integration-tests.yaml)** workflow (runner Docker + Compose)
 
 ### Pre-tests job
 
@@ -25,27 +25,47 @@ The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, t
 
 The unit-tests job runs **`task test`** (`go test ./...` without **`INTEGRATION_TESTS`**). Integration-tagged tests skip at runtime; only unit tests execute (fast, no infrastructure dependencies). Integration jobs (Phase 5) call category tasks such as **`task test-integration-mongodb`**, which set **`INTEGRATION_TESTS=true`** internally.
 
-### Integration-mongodb job
+### Integration test jobs
 
-1. **`actions/checkout`** on **`ubuntu-latest`**
-2. **`docker/login-action`** — same Docker Hub auth to avoid rate limits
-3. **`actions/setup-go`** — installs Go version from `go.mod` with caching
-4. **Install Task** — `go install github.com/go-task/task/v3/cmd/task@latest`
-5. **Prepare environment** — copies `.env.example` to `.env` and runs `task mongo-replica-key`
-6. **Start services** — `docker compose up -d mongodb mongo-init`, wait for health, then `docker compose build migrate` and run migrate in the foreground
-7. **Wait for services** — `scripts/wait-for-compose-services.sh` polls mongodb and mongo-init before migrate; migrate exit code is checked by Compose directly
-8. **Run tests** — `task test-integration-mongodb` with `INTEGRATION_TESTS=true`
-9. **Cleanup** — `docker compose down -v` (always runs, even on failure)
-10. **Failure logs** — on any stack step failure, `docker compose logs mongodb mongo-init migrate` is printed
+Category integration jobs call **[`.github/workflows/integration-tests.yaml`](../../.github/workflows/integration-tests.yaml)** with inputs:
 
-**Docker on GitHub-hosted runners:** Tests run on the **job runner** using the runner's built-in Docker daemon (not Docker-in-Docker). Each job gets an isolated ephemeral VM, so a DinD sidecar is unnecessary. Tests hit `localhost:27018` for MongoDB via Compose published ports, matching `.env.example` defaults and local development workflow.
+| Input | Purpose |
+|-------|---------|
+| **`category`** | Test category (`mongodb`, `pulsar`, …) — sets **`TEST_CATEGORY`** and runs **`task test-integration-<category>`** |
+| **`compose_services`** | Space-separated Compose services to start for that category |
 
-**Service dependencies:** MongoDB category requires three services:
-- `mongodb` — MongoDB 8.0 replica set with healthcheck
-- `mongo-init` — initializes replica set (one-shot with `restart: on-failure`)
-- `migrate` — runs schema migrations (one-shot with `restart: "no"`)
+Each job runs on the **GitHub runner** using the runner's built-in Docker daemon (not Docker-in-Docker). Tests hit published ports on **`localhost`** (e.g. **`27018`** for MongoDB), matching **`.env.example`** defaults and local development.
 
-The wait script polls until `mongodb` is healthy and `migrate` exits successfully (exit code 0).
+**Startup sequence** (in the reusable workflow):
+
+1. Copy **`.env.example`** → **`.env`** and run **`task mongo-replica-key`**
+2. **`docker compose up -d`** for all services except **`migrate`**
+3. **`scripts/wait-for-compose-services.sh`** until background services are healthy or one-shot containers exit 0
+4. If **`migrate`** is listed: **`docker compose build migrate`**, then run migrate in the foreground
+5. **`task test-integration-<category>`** with **`INTEGRATION_TESTS=true`**
+6. **`docker compose down -v`** (always, even on failure)
+
+On failure, **`docker compose logs`** is printed for all services listed in **`compose_services`**.
+
+#### integration-mongodb
+
+Wired from **`ci.yaml`** as:
+
+```yaml
+integration-mongodb:
+  uses: ./.github/workflows/integration-tests.yaml
+  with:
+    category: mongodb
+    compose_services: mongodb mongo-init migrate
+```
+
+**Service dependencies:**
+
+- **`mongodb`** — MongoDB 8.0 replica set with healthcheck
+- **`mongo-init`** — initializes replica set (one-shot with **`restart: on-failure`**)
+- **`migrate`** — runs schema migrations (one-shot with **`restart: "no"`**)
+
+The wait script polls until **`mongodb`** is healthy and **`mongo-init`** exits successfully; migrate exit code is checked by Compose directly when run in the foreground.
 
 ### Go / Docker note
 

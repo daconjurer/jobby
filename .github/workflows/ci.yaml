@@ -20,50 +20,10 @@ jobs:
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
   integration-mongodb:
-    runs-on: ubuntu-latest
-    environment: base
-    env:
-      GOFLAGS: -buildvcs=false
-      INTEGRATION_TESTS: "true"
-      TEST_CATEGORY: mongodb
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Install Task
-        run: go install github.com/go-task/task/v3/cmd/task@latest
-
-      - name: Prepare environment
-        run: |
-          cp .env.example .env
-          task mongo-replica-key
-
-      - name: Start MongoDB stack
-        run: |
-          docker compose up -d mongodb mongo-init
-          ./scripts/wait-for-compose-services.sh "mongodb mongo-init"
-          docker compose build migrate
-          docker compose up --exit-code-from migrate --abort-on-container-exit migrate
-
-      - name: Show service logs on failure
-        if: failure()
-        run: docker compose logs mongodb mongo-init migrate
-
-      - name: Run MongoDB integration tests
-        run: task test-integration-mongodb
-
-      - name: Stop services
-        if: always()
-        run: docker compose down -v
+    uses: ./.github/workflows/integration-tests.yaml
+    with:
+      category: mongodb
+      compose_services: mongodb mongo-init migrate
+    secrets:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}

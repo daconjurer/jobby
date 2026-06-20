@@ -1,0 +1,90 @@
+name: integration-tests
+
+on:
+  workflow_call:
+    inputs:
+      category:
+        required: true
+        type: string
+      compose_services:
+        required: true
+        type: string
+        description: Space-separated Compose services (e.g. "mongodb mongo-init migrate")
+    secrets:
+      DOCKER_USERNAME:
+        required: true
+      DOCKER_PASSWORD:
+        required: true
+
+jobs:
+  integration:
+    name: integration-${{ inputs.category }}
+    runs-on: ubuntu-latest
+    environment: base
+    env:
+      GOFLAGS: -buildvcs=false
+      INTEGRATION_TESTS: "true"
+      TEST_CATEGORY: ${{ inputs.category }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@latest
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          task mongo-replica-key
+
+      - name: Start Compose services
+        env:
+          COMPOSE_SERVICES: ${{ inputs.compose_services }}
+        run: |
+          set -euo pipefail
+          background=""
+          wait_services=""
+          has_migrate=false
+          for service in $COMPOSE_SERVICES; do
+            if [ "$service" = "migrate" ]; then
+              has_migrate=true
+            else
+              background="${background:+$background }$service"
+              wait_services="${wait_services:+$wait_services }$service"
+            fi
+          done
+          if [ -z "$background" ]; then
+            echo "compose_services must include at least one non-migrate service" >&2
+            exit 1
+          fi
+          docker compose up -d $background
+          ./scripts/wait-for-compose-services.sh "$wait_services"
+          if $has_migrate; then
+            docker compose build migrate
+            docker compose up --exit-code-from migrate --abort-on-container-exit migrate
+          fi
+
+      - name: Show service logs on failure
+        if: failure()
+        env:
+          COMPOSE_SERVICES: ${{ inputs.compose_services }}
+        run: docker compose logs $COMPOSE_SERVICES
+
+      - name: Run integration tests
+        run: task test-integration-${{ inputs.category }}
+
+      - name: Stop services
+        if: always()
+        run: docker compose down -v
