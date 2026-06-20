@@ -9,7 +9,7 @@ The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, t
 
 - **`pre-tests`** — format and lint checks
 - **`unit-tests`** — unit test execution
-- **`integration-mongodb`** — MongoDB integration tests with Docker-in-Docker
+- **`integration-mongodb`** — MongoDB integration tests using runner Docker + Compose
 
 ### Pre-tests job
 
@@ -27,18 +27,17 @@ The unit-tests job runs **`task test`** (`go test ./...` without **`INTEGRATION_
 
 ### Integration-mongodb job
 
-1. **`actions/checkout`** on **`ubuntu-latest`** with submodules
-2. **Docker-in-Docker service** — `docker:24-dind` with `--privileged` option provides Docker daemon
-3. **`docker/login-action`** — same Docker Hub auth to avoid rate limits
-4. **`actions/setup-go`** — installs Go version from `go.mod` with caching
-5. **Install Task** — `go install github.com/go-task/task/v3/cmd/task@latest`
-6. **Prepare environment** — copies `.env.example` to `.env` and runs `task mongo-replica-key`
-7. **Start services** — `docker compose up -d mongodb mongo-init migrate`
-8. **Wait for services** — runs `scripts/wait-for-compose-services.sh` to poll service health (timeout: 180s)
-9. **Run tests** — `task test-integration-mongodb` with `INTEGRATION_TESTS=true`
-10. **Cleanup** — `docker compose down -v` (always runs, even on failure)
+1. **`actions/checkout`** on **`ubuntu-latest`**
+2. **`docker/login-action`** — same Docker Hub auth to avoid rate limits
+3. **`actions/setup-go`** — installs Go version from `go.mod` with caching
+4. **Install Task** — `go install github.com/go-task/task/v3/cmd/task@latest`
+5. **Prepare environment** — copies `.env.example` to `.env` and runs `task mongo-replica-key`
+6. **Start services** — `docker compose up -d mongodb mongo-init migrate`
+7. **Wait for services** — runs `scripts/wait-for-compose-services.sh` to poll service health (timeout: 180s)
+8. **Run tests** — `task test-integration-mongodb` with `INTEGRATION_TESTS=true`
+9. **Cleanup** — `docker compose down -v` (always runs, even on failure)
 
-**Docker-in-Docker pattern:** Tests run on the **host runner** (not in a container), hitting `localhost:27018` for MongoDB (published port from Compose). The DinD service provides the Docker daemon via `DOCKER_HOST=tcp://docker:2375`, allowing `docker compose` commands to work. This pattern is simpler than running tests inside a container and matches local development workflow.
+**Docker on GitHub-hosted runners:** Tests run on the **job runner** using the runner's built-in Docker daemon (not Docker-in-Docker). Each job gets an isolated ephemeral VM, so a DinD sidecar is unnecessary. Tests hit `localhost:27018` for MongoDB via Compose published ports, matching `.env.example` defaults and local development workflow.
 
 **Service dependencies:** MongoDB category requires three services:
 - `mongodb` — MongoDB 8.0 replica set with healthcheck

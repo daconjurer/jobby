@@ -22,12 +22,7 @@ jobs:
   integration-mongodb:
     runs-on: ubuntu-latest
     environment: base
-    services:
-      docker:
-        image: docker:24-dind
-        options: --privileged
     env:
-      DOCKER_HOST: tcp://docker:2375
       GOFLAGS: -buildvcs=false
       INTEGRATION_TESTS: "true"
       TEST_CATEGORY: mongodb
