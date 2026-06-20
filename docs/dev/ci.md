@@ -10,6 +10,7 @@ The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, t
 - **`pre-tests`** — format and lint checks
 - **`unit-tests`** — unit test execution
 - **`integration-mongodb`** — MongoDB integration tests via reusable **[`integration-tests.yaml`](../../.github/workflows/integration-tests.yaml)** workflow (runner Docker + Compose)
+- **`integration-cli`** — jobs-cli integration tests (same Mongo stack as **`integration-mongodb`**)
 
 ### Pre-tests job
 
@@ -66,6 +67,20 @@ integration-mongodb:
 - **`migrate`** — runs schema migrations (one-shot with **`restart: "no"`**)
 
 The wait script polls until **`mongodb`** is healthy and **`mongo-init`** exits successfully; migrate exit code is checked by Compose directly when run in the foreground.
+
+#### integration-cli
+
+Wired from **`ci.yaml`** as:
+
+```yaml
+integration-cli:
+  uses: ./.github/workflows/integration-tests.yaml
+  with:
+    category: cli
+    compose_services: mongodb mongo-init migrate
+```
+
+Runs **`task test-integration-cli`** (`./cmd/jobs-cli/commands/...`). Requires the same Mongo bootstrap as **`integration-mongodb`**; Pulsar and app services are not started.
 
 ### Go / Docker note
 
