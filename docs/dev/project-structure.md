@@ -22,15 +22,15 @@ The applications of the project are defined in `cmd/`. For example:
 **`internal/`**
 
 - **`internal/config`** — typed environment config (`MongoConfig`, `PulsarConfig`, `MongoDispatchWorkerConfig`, …) with validation. See [`internal/config/README.md`](../../internal/config/README.md).
-- **`internal/testutil`** — small test helpers (e.g. `ModuleRoot`, `JobTopicsConfigPath` for resolving `config/job-topics.yaml` from the module root).
+- **`internal/testutil`** — small test helpers (`ModuleRoot`, `JobTopicsConfigPath`, `SkipUnlessIntegration` / `IntegrationEnabled` for env-gated integration tests).
 - **`internal/jobs/metadata/`** — jobs metadata domain: `JobMetadata` / `JobMetadataModel`, `JobError`, `JobLog`, `JobsReader` / `JobsWriter`, and related types. Unit tests run with `go test`.
-- **`internal/jobs/mongodb/`** — MongoDB persistence (`MongoJobsReader` / `MongoJobsWriter`, `OpenMongoJobs`, change-stream and poll helpers). Integration tests use the `integration` build tag and expect a running MongoDB (see `docs/dev/setup.md`).
+- **`internal/jobs/mongodb/`** — MongoDB persistence (`MongoJobsReader` / `MongoJobsWriter`, `OpenMongoJobs`, change-stream and poll helpers). Integration tests expect a running MongoDB when **`INTEGRATION_TESTS=true`** (see `docs/dev/setup.md`).
 - **`internal/jobs/appruntime/`** — shared bootstrap for **`jobs-server`** and **`jobs-cli`** (MongoDB + topic resolver + **`EnqueueService`**).
 - **`internal/jobs/service/`** — **`MetadataService`** (business logic shared by **`jobs-server`** and **`jobs-cli`**); **`EnqueueService`** (topic resolution for enqueue on both entrypoints).
 - **`internal/jobs/http/`** — Gin HTTP handlers for the jobs API (`JobsHandler`).
 - **`internal/jobs/dispatch/`** — async dispatch worker (change stream + poll fallback, saga orchestration). Transport-agnostic interfaces in `types.go`; unit tests only. See [dispatch-worker.md](../architecture/dispatch-worker.md).
 - **`internal/jobs/dispatchruntime/`** — composition root for the dispatch process: `New` wires Mongo watch + poll, Pulsar publish, and `DispatchHandler`/`DispatchWorker`. Used by **`cmd/jobs-dispatcher`** and saga integration tests.
-- **`internal/jobs/integrationtest/`** — cross-package integration tests (`//go:build integration`) for dispatch saga and future end-to-end flows.
+- **`internal/jobs/integrationtest/`** — cross-package integration tests (gated by **`INTEGRATION_TESTS`**) for dispatch saga and related flows.
 - **`internal/jobs/pulsar/`** — Pulsar client wrapper, topic resolver (`config/job-topics.yaml`), producer, consumer (`PulsarJobConsumer`), and `DispatchPublisher`.
 - **`internal/jobs/executor/`** — job execution engine: `ExecutorService`, `Registry` (type-safe handler registration), `JobExecutor[T]` interface, and `handlers/` (concrete handlers like `EchoHandler`).
 
