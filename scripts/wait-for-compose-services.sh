@@ -26,40 +26,54 @@ if [ -z "$SERVICES" ]; then
   exit 1
 fi
 
+service_state() {
+  local service="$1"
+  docker compose ps -a --format json \
+    | jq -r --arg svc "$service" 'select(.Service == $svc) | .State' \
+    | head -n 1
+}
+
+service_health() {
+  local service="$1"
+  docker compose ps -a --format json \
+    | jq -r --arg svc "$service" 'select(.Service == $svc) | .Health // ""' \
+    | head -n 1
+}
+
+service_exit_code() {
+  local service="$1"
+  docker compose ps -a --format json \
+    | jq -r --arg svc "$service" 'select(.Service == $svc) | .ExitCode // 1' \
+    | head -n 1
+}
+
 echo "Waiting for services: $SERVICES (timeout: ${TIMEOUT}s, interval: ${INTERVAL}s)"
 
 elapsed=0
 while [ $elapsed -lt "$TIMEOUT" ]; do
   all_ready=true
-  
-  # Get all compose services status as JSON array
-  services_json=$(docker compose ps --format json 2>/dev/null || echo "[]")
-  
-  # Check each requested service
+
   for service in $SERVICES; do
-    # Extract this service's state and health
-    state=$(echo "$services_json" | jq -r --arg svc "$service" '.[] | select(.Service == $svc) | .State' 2>/dev/null || echo "")
-    health=$(echo "$services_json" | jq -r --arg svc "$service" '.[] | select(.Service == $svc) | .Health' 2>/dev/null || echo "")
-    
-    if [ -z "$state" ]; then
+    state="$(service_state "$service")"
+    health="$(service_health "$service")"
+
+    if [ -z "$state" ] || [ "$state" = "null" ]; then
       echo "  [$elapsed/${TIMEOUT}s] $service: not found"
       all_ready=false
       continue
     fi
-    
-    # Check if service is ready based on state and health
+
     case "$state" in
       running)
-        if [ "$health" = "healthy" ] || [ "$health" = "" ]; then
-          echo "  [$elapsed/${TIMEOUT}s] $service: ready (running, health=$health)"
+        if [ "$health" = "healthy" ]; then
+          echo "  [$elapsed/${TIMEOUT}s] $service: ready (running, healthy)"
         else
-          echo "  [$elapsed/${TIMEOUT}s] $service: running but not healthy yet (health=$health)"
+          echo "  [$elapsed/${TIMEOUT}s] $service: running but not healthy yet (health=${health:-none})"
           all_ready=false
         fi
         ;;
       exited)
-        # Services like 'migrate' with restart:"no" should exit successfully
-        exit_code=$(echo "$services_json" | jq -r --arg svc "$service" '.[] | select(.Service == $svc) | .ExitCode' 2>/dev/null || echo "1")
+        exit_code="$(service_exit_code "$service")"
         if [ "$exit_code" = "0" ]; then
           echo "  [$elapsed/${TIMEOUT}s] $service: completed successfully (exit 0)"
         else
@@ -69,22 +83,22 @@ while [ $elapsed -lt "$TIMEOUT" ]; do
         fi
         ;;
       *)
-        echo "  [$elapsed/${TIMEOUT}s] $service: state=$state, health=$health (waiting)"
+        echo "  [$elapsed/${TIMEOUT}s] $service: state=$state, health=${health:-none} (waiting)"
         all_ready=false
         ;;
     esac
   done
-  
+
   if $all_ready; then
     echo ""
-    echo "✓ All services ready"
+    echo "All services ready"
     exit 0
   fi
-  
+
   sleep "$INTERVAL"
   elapsed=$((elapsed + INTERVAL))
 done
 
 echo ""
-echo "✗ Timeout waiting for services after ${TIMEOUT}s" >&2
+echo "Timeout waiting for services after ${TIMEOUT}s" >&2
 exit 1
