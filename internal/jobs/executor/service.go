@@ -117,7 +117,7 @@ func (s *ExecutorService) validateArgs(jobID, name string, payload json.RawMessa
 // This catches malformed JSON early and allows us to fail-fast with ack.
 func (s *ExecutorService) testDecode(name, jobID string, payload json.RawMessage) error {
 	// We can't actually test decode without knowing the type, but we can at least validate it's valid JSON
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(payload, &raw); err != nil {
 		return fmt.Errorf("invalid JSON payload: %w", err)
 	}
