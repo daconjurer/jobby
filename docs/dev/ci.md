@@ -11,6 +11,7 @@ The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, t
 - **`unit-tests`** — unit test execution
 - **`integration-mongodb`** — MongoDB integration tests via reusable **[`integration-tests.yaml`](../../.github/workflows/integration-tests.yaml)** workflow (runner Docker + Compose)
 - **`integration-cli`** — jobs-cli integration tests (same Mongo stack as **`integration-mongodb`**)
+- **`integration-http`** — HTTP handler integration tests (same Mongo stack as **`integration-mongodb`**)
 
 ### Pre-tests job
 
@@ -81,6 +82,20 @@ integration-cli:
 ```
 
 Runs **`task test-integration-cli`** (`./cmd/jobs-cli/commands/...`). Requires the same Mongo bootstrap as **`integration-mongodb`**; Pulsar and app services are not started.
+
+#### integration-http
+
+Wired from **`ci.yaml`** as:
+
+```yaml
+integration-http:
+  uses: ./.github/workflows/integration-tests.yaml
+  with:
+    category: http
+    compose_services: mongodb mongo-init migrate
+```
+
+Runs **`task test-integration-http`** (`./internal/jobs/http/...`). Requires the same Mongo bootstrap as **`integration-mongodb`**; Pulsar and app services are not started.
 
 ### Go / Docker note
 

@@ -56,6 +56,7 @@ Defined in **[Taskfile.yml](../../Taskfile.yml)**. Integration tasks load **`.en
 | **`task test-integration`** | All `-tags=integration` tests under `./...` | None built-in |
 | **`task test-integration-mongodb`** | `./internal/jobs/mongodb/...` | None built-in |
 | **`task test-integration-cli`** | `./cmd/jobs-cli/commands/...` | None built-in |
+| **`task test-integration-http`** | `./internal/jobs/http/...` | None built-in |
 | **`task test-integration-executor`** | `./internal/jobs/integrationtest/... -run TestIntegration_Executor` | Stops `jobs-dispatcher`, `jobs-executor`, `jobs-server` before run |
 
 Shared flags for integration tasks (`INTEGRATION_TEST_FLAGS`):
@@ -195,10 +196,14 @@ go test -tags=integration -p 1 -parallel 1 -count=1 -v \
 
 ### HTTP handler integration
 
+Mongo only (`task mongo-up`). Tests exercise the jobs HTTP handler against live Mongo (enqueue, get, list, fail/cancel/retry, logs).
+
 ```sh
 task mongo-up
-go test -tags=integration -p 1 -count=1 -v ./internal/jobs/http/...
+task test-integration-http
 ```
+
+CI runs this as the **`integration-http`** job (see **[ci.md](./ci.md)**).
 
 ### jobs-cli integration
 
@@ -242,7 +247,7 @@ go test -tags=integration -p 1 -count=1 -v \
 | Mongo CAS / writer | Yes | No | No | `go test ./internal/jobs/mongodb/...` |
 | Executor saga + terminal race | Yes | Yes | **Stopped** | `task test-integration-executor` |
 | All `integrationtest` (11 tests) | Yes | Yes | **Stopped** | stop services + `go test ./internal/jobs/integrationtest/...` |
-| HTTP handler integration | Yes | No | No | `go test ./internal/jobs/http/...` |
+| HTTP handler integration | Yes | No | No | `task test-integration-http` |
 | jobs-cli integration | Yes | No | No | `task test-integration-cli` |
 | E2E HTTP pipeline | Yes | Yes | **Running** | `task docker-up` + `TestE2EIntegration` |
 | Full integration suite | Mixed | Mixed | **Conflicting** | `task test-integration` — interpret failures by package |
