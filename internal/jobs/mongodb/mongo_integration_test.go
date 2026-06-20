@@ -1,5 +1,3 @@
-//go:build integration
-
 package mongodb
 
 import (
@@ -11,6 +9,7 @@ import (
 	"time"
 
 	"github.com/daconjurer/jobby/internal/jobs/metadata"
+	"github.com/daconjurer/jobby/internal/testutil"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -43,6 +42,7 @@ func (bogusJobMeta) Validate() error                     { return nil }
 
 func integrationMongoEnv(tb testing.TB) MongoConfig {
 	tb.Helper()
+	testutil.SkipUnlessIntegration(tb)
 	if testing.Short() {
 		tb.Skip("skipping integration test (-short)")
 	}

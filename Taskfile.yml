@@ -1,8 +1,15 @@
 # https://taskfile.dev/
 version: "3"
 
+includes:
+  integration:
+    taskfile: ./taskfiles/integration/Taskfile.yml
+    flatten: true
+    vars:
+      INTEGRATION_TEST_FLAGS: "{{.INTEGRATION_TEST_FLAGS}}"
+
 vars:
-  INTEGRATION_TEST_FLAGS: -tags=integration -p 1 -parallel 1 -count=1
+  INTEGRATION_TEST_FLAGS: -p 1 -parallel 1 -count=1
   COVERMODE: atomic
   COVERAGE_OUT: coverage.out
   COVERAGE_UNIT_OUT: coverage-unit.out
@@ -137,7 +144,9 @@ tasks:
       - go tool cover -html={{ .COVERAGE_OUT }}
 
   coverage-integration:
-    desc: Integration coverage (-tags=integration); loads .env; needs MongoDB
+    desc: Integration coverage; loads .env; sets INTEGRATION_TESTS=true; needs MongoDB
+    env:
+      INTEGRATION_TESTS: "true"
     dotenv:
       - .env
     cmds:
@@ -148,6 +157,8 @@ tasks:
       - echo "Run 'task coverage-integration-html' to open this profile in the browser"
 
   coverage-integration-html:
+    env:
+      INTEGRATION_TESTS: "true"
     dotenv:
       - .env
     cmds:
@@ -162,7 +173,7 @@ tasks:
     cmds:
       - echo "Generating merged unit + integration coverage ({{ .COVERAGE_ALL_OUT }})..."
       - go test -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_UNIT_OUT }} ./...
-      - go test {{ .INTEGRATION_TEST_FLAGS }} -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_INTEGRATION_OUT }} ./...
+      - env INTEGRATION_TESTS=true go test {{ .INTEGRATION_TEST_FLAGS }} -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_INTEGRATION_OUT }} ./...
       - '{ echo "mode: {{ .COVERMODE }}"; grep -h -v "^mode:" {{ .COVERAGE_UNIT_OUT }} {{ .COVERAGE_INTEGRATION_OUT }}; } > {{ .COVERAGE_ALL_OUT }}'
       - go tool cover -func={{ .COVERAGE_ALL_OUT }}
       - echo ""
@@ -174,7 +185,7 @@ tasks:
     cmds:
       - echo "Generating merged unit + integration coverage ({{ .COVERAGE_ALL_OUT }})..."
       - go test -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_UNIT_OUT }} ./...
-      - go test {{ .INTEGRATION_TEST_FLAGS }} -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_INTEGRATION_OUT }} ./...
+      - env INTEGRATION_TESTS=true go test {{ .INTEGRATION_TEST_FLAGS }} -covermode={{ .COVERMODE }} -coverprofile={{ .COVERAGE_INTEGRATION_OUT }} ./...
       - '{ echo "mode: {{ .COVERMODE }}"; grep -h -v "^mode:" {{ .COVERAGE_UNIT_OUT }} {{ .COVERAGE_INTEGRATION_OUT }}; } > {{ .COVERAGE_ALL_OUT }}'
       - go tool cover -html={{ .COVERAGE_ALL_OUT }}
 
