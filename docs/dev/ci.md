@@ -32,10 +32,11 @@ The unit-tests job runs **`task test`** (`go test ./...` without **`INTEGRATION_
 3. **`actions/setup-go`** — installs Go version from `go.mod` with caching
 4. **Install Task** — `go install github.com/go-task/task/v3/cmd/task@latest`
 5. **Prepare environment** — copies `.env.example` to `.env` and runs `task mongo-replica-key`
-6. **Start services** — `docker compose up -d mongodb mongo-init migrate`
-7. **Wait for services** — runs `scripts/wait-for-compose-services.sh` to poll service health (timeout: 180s)
+6. **Start services** — `docker compose up -d mongodb mongo-init`, wait for health, then `docker compose build migrate` and run migrate in the foreground
+7. **Wait for services** — `scripts/wait-for-compose-services.sh` polls mongodb and mongo-init before migrate; migrate exit code is checked by Compose directly
 8. **Run tests** — `task test-integration-mongodb` with `INTEGRATION_TESTS=true`
 9. **Cleanup** — `docker compose down -v` (always runs, even on failure)
+10. **Failure logs** — on any stack step failure, `docker compose logs mongodb mongo-init migrate` is printed
 
 **Docker on GitHub-hosted runners:** Tests run on the **job runner** using the runner's built-in Docker daemon (not Docker-in-Docker). Each job gets an isolated ephemeral VM, so a DinD sidecar is unnecessary. Tests hit `localhost:27018` for MongoDB via Compose published ports, matching `.env.example` defaults and local development workflow.
 

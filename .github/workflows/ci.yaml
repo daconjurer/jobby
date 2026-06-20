@@ -50,11 +50,16 @@ jobs:
           cp .env.example .env
           task mongo-replica-key
 
-      - name: Start MongoDB services
-        run: docker compose up -d mongodb mongo-init migrate
+      - name: Start MongoDB stack
+        run: |
+          docker compose up -d mongodb mongo-init
+          ./scripts/wait-for-compose-services.sh "mongodb mongo-init"
+          docker compose build migrate
+          docker compose up --exit-code-from migrate --abort-on-container-exit migrate
 
-      - name: Wait for services
-        run: ./scripts/wait-for-compose-services.sh "mongodb mongo-init migrate"
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs mongodb mongo-init migrate
 
       - name: Run MongoDB integration tests
         run: task test-integration-mongodb

@@ -1,6 +1,5 @@
 [
   {
-    "comment": "Step 1: Restore latest error from errors array to error field",
     "update": "job_metadata",
     "updates": [
       {
@@ -26,7 +25,6 @@
     ]
   },
   {
-    "comment": "Step 2: Remove errors array from all documents",
     "update": "job_metadata",
     "updates": [
       {
@@ -39,7 +37,6 @@
     ]
   },
   {
-    "comment": "Step 3: Restore original validator with error field",
     "collMod": "job_metadata",
     "validator": {
       "$jsonSchema": {
