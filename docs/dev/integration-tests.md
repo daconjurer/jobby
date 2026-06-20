@@ -58,6 +58,7 @@ Defined in **[Taskfile.yml](../../Taskfile.yml)**. Integration tasks load **`.en
 | **`task test-integration-cli`** | `./cmd/jobs-cli/commands/...` | None built-in |
 | **`task test-integration-http`** | `./internal/jobs/http/...` | None built-in |
 | **`task test-integration-pulsar`** | `./internal/jobs/pulsar/...` | None built-in |
+| **`task test-integration-dispatch`** | `./internal/jobs/integrationtest/...` | None built-in (CI does not start app worker containers) |
 | **`task test-integration-executor`** | `./internal/jobs/integrationtest/... -run TestIntegration_Executor` | Stops `jobs-dispatcher`, `jobs-executor`, `jobs-server` before run |
 
 Shared flags for integration tasks (`INTEGRATION_TEST_FLAGS`):
@@ -195,6 +196,18 @@ go test -tags=integration -p 1 -parallel 1 -count=1 -v \
   ./internal/jobs/integrationtest/...
 ```
 
+### Dispatch / change stream / integrationtest package
+
+Mongo + Pulsar. Stop compose app services before running locally (in-process workers conflict with **`jobs-dispatcher`** / **`jobs-executor`**). CI does not start app containers.
+
+```sh
+task mongo-up && docker compose up -d pulsar
+docker compose stop jobs-dispatcher jobs-executor jobs-server
+task test-integration-dispatch
+```
+
+CI runs this as the **`integration-dispatch`** job (see **[ci.md](./ci.md)**).
+
 ### Pulsar producer / topic resolver
 
 Pulsar only. Requires **`PULSAR_SERVICE_URL`** from **`.env`** (`pulsar://localhost:6650`).
@@ -259,7 +272,7 @@ go test -tags=integration -p 1 -count=1 -v \
 | Mongo CAS / writer | Yes | No | No | `go test ./internal/jobs/mongodb/...` |
 | Pulsar producer / topics | No | Yes | No | `task test-integration-pulsar` |
 | Executor saga + terminal race | Yes | Yes | **Stopped** | `task test-integration-executor` |
-| All `integrationtest` (11 tests) | Yes | Yes | **Stopped** | stop services + `go test ./internal/jobs/integrationtest/...` |
+| All `integrationtest` (11 tests) | Yes | Yes | **Stopped** | `task test-integration-dispatch` |
 | HTTP handler integration | Yes | No | No | `task test-integration-http` |
 | jobs-cli integration | Yes | No | No | `task test-integration-cli` |
 | E2E HTTP pipeline | Yes | Yes | **Running** | `task docker-up` + `TestE2EIntegration` |
