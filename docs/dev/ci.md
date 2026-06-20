@@ -12,6 +12,7 @@ The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, t
 - **`integration-mongodb`** — MongoDB integration tests via reusable **[`integration-tests.yaml`](../../.github/workflows/integration-tests.yaml)** workflow (runner Docker + Compose)
 - **`integration-cli`** — jobs-cli integration tests (same Mongo stack as **`integration-mongodb`**)
 - **`integration-http`** — HTTP handler integration tests (same Mongo stack as **`integration-mongodb`**)
+- **`integration-pulsar`** — Pulsar producer/topic integration tests (`pulsar` only)
 
 ### Pre-tests job
 
@@ -96,6 +97,20 @@ integration-http:
 ```
 
 Runs **`task test-integration-http`** (`./internal/jobs/http/...`). Requires the same Mongo bootstrap as **`integration-mongodb`**; Pulsar and app services are not started.
+
+#### integration-pulsar
+
+Wired from **`ci.yaml`** as:
+
+```yaml
+integration-pulsar:
+  uses: ./.github/workflows/integration-tests.yaml
+  with:
+    category: pulsar
+    compose_services: pulsar
+```
+
+Runs **`task test-integration-pulsar`** (`./internal/jobs/pulsar/...`). Starts only the **`pulsar`** broker; Mongo and app services are not required.
 
 ### Go / Docker note
 
