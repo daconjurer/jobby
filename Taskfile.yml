@@ -105,21 +105,6 @@ tasks:
     cmds:
       - go test ./...
 
-  test-integration:
-    desc: Integration tests (-tags=integration); loads .env; needs MongoDB (see docs)
-    dotenv:
-      - .env
-    cmds:
-      - go test {{ .INTEGRATION_TEST_FLAGS }} -v ./...
-
-  test-integration-executor:
-    desc: Executor saga + terminal race integration tests; stops competing compose app services first (see docs/internal/integration-test-isolation.md)
-    dotenv:
-      - .env
-    cmds:
-      - docker compose stop jobs-dispatcher jobs-executor jobs-server || true
-      - go test {{ .INTEGRATION_TEST_FLAGS }} -v ./internal/jobs/integrationtest/... -run TestIntegration_Executor
-
   test-verbose:
     cmds:
       - go test -v ./...
