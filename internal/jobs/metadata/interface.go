@@ -168,6 +168,12 @@ type JobsWriter interface {
 	// MarkRunningIfDispatched transitions dispatched → running atomically.
 	// Returns (true, nil) on success, (false, nil) if job not dispatched (idempotent duplicate).
 	MarkRunningIfDispatched(ctx context.Context, jobID string, startedAt time.Time) (bool, error)
+	// CompleteIfRunning sets status=completed when jobId matches and status=running.
+	// Returns (true, nil) on match, (false, nil) if not running.
+	CompleteIfRunning(ctx context.Context, jobID string, completedAt time.Time, metadata *map[string]any) (bool, error)
+	// FailIfNotTerminal appends execution error and sets status=failed when status is running or dispatched.
+	// Returns (true, nil) on match, (false, nil) if already terminal or not fail-able.
+	FailIfNotTerminal(ctx context.Context, jobID string, jobErr JobError, completedAt time.Time) (bool, error)
 	AddLog(ctx context.Context, log JobLog) error
 	DeleteOldLogs(ctx context.Context, olderThan time.Duration) (int64, error)
 }

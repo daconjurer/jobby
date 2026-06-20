@@ -20,8 +20,26 @@ type recordingJobsWriter struct {
 	markDispatchFailedCalls   []markDispatchFailedCall
 	markRunningMatched        bool
 	markRunningErr            error
+	completeIfRunningMatched  bool
+	completeIfRunningErr      error
+	completeIfRunningCalls    []completeIfRunningCall
+	failIfNotTerminalMatched  bool
+	failIfNotTerminalErr      error
+	failIfNotTerminalCalls    []failIfNotTerminalCall
 	logs                      []metadata.JobLog
 	createErr                 error
+}
+
+type completeIfRunningCall struct {
+	jobID       string
+	completedAt time.Time
+	metadata    *map[string]any
+}
+
+type failIfNotTerminalCall struct {
+	jobID       string
+	jobErr      metadata.JobError
+	completedAt time.Time
 }
 
 type recordAttemptCall struct {
@@ -74,6 +92,24 @@ func (w *recordingJobsWriter) MarkDispatchFailedIfPending(_ context.Context, job
 
 func (w *recordingJobsWriter) MarkRunningIfDispatched(_ context.Context, _ string, _ time.Time) (bool, error) {
 	return w.markRunningMatched, w.markRunningErr
+}
+
+func (w *recordingJobsWriter) CompleteIfRunning(_ context.Context, jobID string, completedAt time.Time, meta *map[string]any) (bool, error) {
+	w.completeIfRunningCalls = append(w.completeIfRunningCalls, completeIfRunningCall{
+		jobID:       jobID,
+		completedAt: completedAt,
+		metadata:    meta,
+	})
+	return w.completeIfRunningMatched, w.completeIfRunningErr
+}
+
+func (w *recordingJobsWriter) FailIfNotTerminal(_ context.Context, jobID string, jobErr metadata.JobError, completedAt time.Time) (bool, error) {
+	w.failIfNotTerminalCalls = append(w.failIfNotTerminalCalls, failIfNotTerminalCall{
+		jobID:       jobID,
+		jobErr:      jobErr,
+		completedAt: completedAt,
+	})
+	return w.failIfNotTerminalMatched, w.failIfNotTerminalErr
 }
 
 func (w *recordingJobsWriter) AddLog(_ context.Context, log metadata.JobLog) error {
@@ -408,12 +444,19 @@ func TestMetadataService_CompleteJob_SucceedsFromRunning(t *testing.T) {
 	job.Status = metadata.JobStatusRunning
 	now := time.Now()
 	job.StartedAt = &now
+	writer := &recordingJobsWriter{completeIfRunningMatched: true}
 
-	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
+	svc := NewMetadataService(stubJobsReader{job: job}, writer)
 
 	err := svc.CompleteJob(ctx, job.JobID, nil)
 	if err != nil {
 		t.Fatalf("expected no error from running status, got %v", err)
+	}
+	if len(writer.completeIfRunningCalls) != 1 {
+		t.Fatalf("completeIfRunningCalls=%v", writer.completeIfRunningCalls)
+	}
+	if len(writer.logs) != 1 || writer.logs[0].Message != "Job completed successfully" {
+		t.Fatalf("logs=%v", writer.logs)
 	}
 }
 
@@ -472,11 +515,39 @@ func TestMetadataService_FailJob_SucceedsFromRunning(t *testing.T) {
 	job.Status = metadata.JobStatusRunning
 	now := time.Now()
 	job.StartedAt = &now
+	writer := &recordingJobsWriter{failIfNotTerminalMatched: true}
 
-	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
+	svc := NewMetadataService(stubJobsReader{job: job}, writer)
 
 	err := svc.FailJob(ctx, job.JobID, errors.New("handler error"))
 	if err != nil {
 		t.Fatalf("expected no error from running status, got %v", err)
+	}
+	if len(writer.failIfNotTerminalCalls) != 1 {
+		t.Fatalf("failIfNotTerminalCalls=%v", writer.failIfNotTerminalCalls)
+	}
+	got := writer.failIfNotTerminalCalls[0]
+	if got.jobErr.Error != "handler error" || got.jobErr.Type != metadata.JobErrorTypeExecution {
+		t.Fatalf("jobErr=%+v", got.jobErr)
+	}
+	if len(writer.logs) != 1 || writer.logs[0].Message != "Job failed" {
+		t.Fatalf("logs=%v", writer.logs)
+	}
+}
+
+func TestMetadataService_FailJob_SucceedsFromDispatched(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
+	job.Status = metadata.JobStatusDispatched
+	writer := &recordingJobsWriter{failIfNotTerminalMatched: true}
+
+	svc := NewMetadataService(stubJobsReader{job: job}, writer)
+
+	err := svc.FailJob(ctx, job.JobID, errors.New("api fail"))
+	if err != nil {
+		t.Fatalf("expected no error from dispatched status, got %v", err)
+	}
+	if len(writer.failIfNotTerminalCalls) != 1 {
+		t.Fatalf("failIfNotTerminalCalls=%v", writer.failIfNotTerminalCalls)
 	}
 }

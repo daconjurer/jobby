@@ -796,3 +796,217 @@ func jobIDs(jobs []metadata.JobMetadata) []string {
 	}
 	return out
 }
+
+func seedRunningJob(ctx context.Context, t *testing.T, writer *MongoJobsWriter, reader *MongoJobsReader) *metadata.JobMetadataModel {
+	t.Helper()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "terminal-cas", nil)
+	if err := writer.Create(ctx, job); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	dispatchedAt := time.Now().UTC()
+	if _, err := writer.MarkDispatchedIfPending(ctx, job.JobID, dispatchedAt); err != nil {
+		t.Fatalf("MarkDispatchedIfPending: %v", err)
+	}
+	startedAt := time.Now().UTC()
+	if _, err := writer.MarkRunningIfDispatched(ctx, job.JobID, startedAt); err != nil {
+		t.Fatalf("MarkRunningIfDispatched: %v", err)
+	}
+	jm, err := reader.Get(ctx, job.JobID)
+	return mustJobModel(t, jm, err)
+}
+
+func TestIntegration_MongoTerminalWriter(t *testing.T) {
+	ctx, _, reader, writer := prepareIntegrationMongoPersistence(t)
+
+	t.Run("CompleteIfRunning_success", func(t *testing.T) {
+		job := seedRunningJob(ctx, t, writer, reader)
+		completedAt := time.Now().UTC().Truncate(time.Millisecond)
+
+		matched, err := writer.CompleteIfRunning(ctx, job.JobID, completedAt, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !matched {
+			t.Fatal("expected matched=true")
+		}
+
+		jm, err := reader.Get(ctx, job.JobID)
+		got := mustJobModel(t, jm, err)
+		if got.Status != metadata.JobStatusCompleted {
+			t.Fatalf("status=%s want completed", got.Status)
+		}
+		if got.CompletedAt == nil {
+			t.Fatal("expected completedAt")
+		}
+	})
+
+	t.Run("CompleteIfRunning_miss", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "terminal-cas", nil)
+		job.Status = metadata.JobStatusFailed
+		now := time.Now().UTC()
+		job.StartedAt = &now
+		job.CompletedAt = &now
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+
+		matched, err := writer.CompleteIfRunning(ctx, job.JobID, time.Now().UTC(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if matched {
+			t.Fatal("expected matched=false")
+		}
+
+		jm, err := reader.Get(ctx, job.JobID)
+		got := mustJobModel(t, jm, err)
+		if got.Status != metadata.JobStatusFailed {
+			t.Fatalf("status=%s want failed unchanged", got.Status)
+		}
+	})
+
+	t.Run("FailIfNotTerminal_fromRunning", func(t *testing.T) {
+		job := seedRunningJob(ctx, t, writer, reader)
+		completedAt := time.Now().UTC().Truncate(time.Millisecond)
+		jobErr := metadata.JobError{
+			Type:         metadata.JobErrorTypeExecution,
+			RetryAttempt: 0,
+			Error:        "boom",
+			Timestamp:    completedAt,
+		}
+
+		matched, err := writer.FailIfNotTerminal(ctx, job.JobID, jobErr, completedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !matched {
+			t.Fatal("expected matched=true")
+		}
+
+		jm, err := reader.Get(ctx, job.JobID)
+		got := mustJobModel(t, jm, err)
+		if got.Status != metadata.JobStatusFailed {
+			t.Fatalf("status=%s want failed", got.Status)
+		}
+		if len(got.Errors) != 1 || got.Errors[0].Error != "boom" {
+			t.Fatalf("errors=%v", got.Errors)
+		}
+	})
+
+	t.Run("FailIfNotTerminal_fromDispatched", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "terminal-cas", nil)
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writer.MarkDispatchedIfPending(ctx, job.JobID, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+
+		completedAt := time.Now().UTC().Truncate(time.Millisecond)
+		jobErr := metadata.JobError{
+			Type:         metadata.JobErrorTypeExecution,
+			RetryAttempt: 0,
+			Error:        "api fail",
+			Timestamp:    completedAt,
+		}
+		matched, err := writer.FailIfNotTerminal(ctx, job.JobID, jobErr, completedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !matched {
+			t.Fatal("expected matched=true")
+		}
+
+		jm, err := reader.Get(ctx, job.JobID)
+		got := mustJobModel(t, jm, err)
+		if got.Status != metadata.JobStatusFailed {
+			t.Fatalf("status=%s want failed", got.Status)
+		}
+	})
+
+	t.Run("FailIfNotTerminal_miss", func(t *testing.T) {
+		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "terminal-cas", nil)
+		job.Status = metadata.JobStatusCompleted
+		now := time.Now().UTC()
+		job.StartedAt = &now
+		job.CompletedAt = &now
+		if err := writer.Create(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+
+		jobErr := metadata.JobError{
+			Type:         metadata.JobErrorTypeExecution,
+			RetryAttempt: 0,
+			Error:        "late fail",
+			Timestamp:    now,
+		}
+		matched, err := writer.FailIfNotTerminal(ctx, job.JobID, jobErr, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if matched {
+			t.Fatal("expected matched=false")
+		}
+
+		jm, err := reader.Get(ctx, job.JobID)
+		got := mustJobModel(t, jm, err)
+		if got.Status != metadata.JobStatusCompleted {
+			t.Fatalf("status=%s want completed unchanged", got.Status)
+		}
+	})
+
+	t.Run("Concurrent_complete_vs_fail", func(t *testing.T) {
+		const iterations = 20
+		for i := 0; i < iterations; i++ {
+			job := seedRunningJob(ctx, t, writer, reader)
+			completedAt := time.Now().UTC()
+			jobErr := metadata.JobError{
+				Type:         metadata.JobErrorTypeExecution,
+				RetryAttempt: 0,
+				Error:        "race fail",
+				Timestamp:    completedAt,
+			}
+
+			type outcome struct {
+				completeMatched bool
+				failMatched     bool
+				err             error
+			}
+			results := make(chan outcome, 2)
+			go func() {
+				matched, err := writer.CompleteIfRunning(ctx, job.JobID, completedAt, nil)
+				results <- outcome{completeMatched: matched, err: err}
+			}()
+			go func() {
+				matched, err := writer.FailIfNotTerminal(ctx, job.JobID, jobErr, completedAt)
+				results <- outcome{failMatched: matched, err: err}
+			}()
+
+			var completeMatched, failMatched bool
+			for range 2 {
+				r := <-results
+				if r.err != nil {
+					t.Fatalf("iteration %d: %v", i, r.err)
+				}
+				if r.completeMatched {
+					completeMatched = true
+				}
+				if r.failMatched {
+					failMatched = true
+				}
+			}
+			if completeMatched == failMatched {
+				t.Fatalf("iteration %d: expected exactly one winner, complete=%v fail=%v", i, completeMatched, failMatched)
+			}
+
+			jm, err := reader.Get(ctx, job.JobID)
+			got := mustJobModel(t, jm, err)
+			if !got.Status.IsTerminal() {
+				t.Fatalf("iteration %d: status=%s want terminal", i, got.Status)
+			}
+			if got.Status != metadata.JobStatusCompleted && got.Status != metadata.JobStatusFailed {
+				t.Fatalf("iteration %d: unexpected terminal status %s", i, got.Status)
+			}
+		}
+	})
+}
