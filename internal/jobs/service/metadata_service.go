@@ -129,12 +129,14 @@ func (s *MetadataService) MarkJobDispatchFailed(ctx context.Context, jobID strin
 }
 
 // StartJob transitions a dispatched job to running status atomically.
-// Returns error only on infrastructure failures (not duplicate delivery).
-func (s *MetadataService) StartJob(ctx context.Context, jobID string) error {
+// Returns (matched, error) where matched=true means the transition occurred.
+// matched=false means job wasn't in dispatched state (duplicate delivery or already terminal).
+// Returns error only on infrastructure failures.
+func (s *MetadataService) StartJob(ctx context.Context, jobID string) (bool, error) {
 	now := time.Now()
 	matched, err := s.writer.MarkRunningIfDispatched(ctx, jobID, now)
 	if err != nil {
-		return fmt.Errorf("failed to mark job running: %w", err)
+		return false, fmt.Errorf("failed to mark job running: %w", err)
 	}
 
 	// If not matched, job is not in dispatched state (duplicate delivery or already running/terminal)
@@ -145,7 +147,7 @@ func (s *MetadataService) StartJob(ctx context.Context, jobID string) error {
 		} else {
 			log.Printf("warning: duplicate delivery for job %s, current status: %s", jobID, job.GetStatus())
 		}
-		return nil
+		return false, nil
 	}
 
 	logEntry := metadata.NewJobLogWithSource(
@@ -158,54 +160,64 @@ func (s *MetadataService) StartJob(ctx context.Context, jobID string) error {
 		log.Printf("warning: failed to log job start: %v", err)
 	}
 
-	return nil
+	return true, nil
 }
 
 // CompleteJob marks a job as completed successfully.
 func (s *MetadataService) CompleteJob(ctx context.Context, jobID string, result map[string]any) error {
+	now := time.Now().UTC()
+
+	var metaPtr *map[string]any
+	if result != nil {
+		job, err := s.reader.Get(ctx, jobID)
+		if err != nil {
+			return fmt.Errorf("failed to get job: %w", err)
+		}
+		model, err := metadata.AsJobModel(job)
+		if err != nil {
+			return err
+		}
+		model.SetMetadataField("result", result)
+		meta := model.Metadata
+		metaPtr = &meta
+	}
+
+	matched, err := s.writer.CompleteIfRunning(ctx, jobID, now, metaPtr)
+	if err != nil {
+		return fmt.Errorf("failed to complete job: %w", err)
+	}
+	if matched {
+		logCtx := map[string]any(nil)
+		if job, getErr := s.reader.Get(ctx, jobID); getErr == nil {
+			if model, modelErr := metadata.AsJobModel(job); modelErr == nil {
+				logCtx = map[string]any{
+					"duration": model.Duration().String(),
+				}
+			}
+		}
+		logEntry := metadata.NewJobLogWithContext(
+			jobID,
+			metadata.LogLevelInfo,
+			"Job completed successfully",
+			logCtx,
+		)
+		if err := s.writer.AddLog(ctx, logEntry); err != nil {
+			log.Printf("warning: failed to log job completion: %v", err)
+		}
+		return nil
+	}
+
 	job, err := s.reader.Get(ctx, jobID)
 	if err != nil {
-		return fmt.Errorf("failed to get job: %w", err)
+		return fmt.Errorf("failed to get job after complete miss: %w", err)
 	}
-
-	model, err := metadata.AsJobModel(job)
-	if err != nil {
-		return err
+	if job.GetStatus().IsTerminal() {
+		return metadata.ErrJobAlreadyTerminal
 	}
-
-	if err := model.SetStatus(metadata.JobStatusCompleted); err != nil {
-		return fmt.Errorf("invalid status transition: %w", err)
+	if job.GetStatus() == metadata.JobStatusDispatched {
+		return fmt.Errorf("cannot complete job %s in dispatched state", jobID)
 	}
-
-	if result != nil {
-		model.SetMetadataField("result", result)
-	}
-
-	st := model.Status
-	meta := model.Metadata
-	var completedAt *time.Time
-	if model.CompletedAt != nil {
-		t := *model.CompletedAt
-		completedAt = &t
-	}
-	patch := metadata.UpdateJob{Status: &st, CompletedAt: completedAt, Metadata: &meta}
-	if err := s.writer.Update(ctx, jobID, patch); err != nil {
-		return fmt.Errorf("failed to update job: %w", err)
-	}
-
-	logEntry := metadata.NewJobLogWithContext(
-		jobID,
-		metadata.LogLevelInfo,
-		"Job completed successfully",
-		map[string]any{
-			"duration": model.Duration().String(),
-		},
-	)
-	if err := s.writer.AddLog(ctx, logEntry); err != nil {
-		log.Printf("warning: failed to log job completion: %v", err)
-	}
-
-	return nil
+	return fmt.Errorf("unexpected job status %s for complete", job.GetStatus())
 }
 
 // FailJob marks a job as failed with an error message.
@@ -215,40 +227,45 @@ func (s *MetadataService) FailJob(ctx context.Context, jobID string, jobErr erro
 		return fmt.Errorf("failed to get job: %w", err)
 	}
 
-	model, err := metadata.AsJobModel(job)
+	errMsg := ""
+	if jobErr != nil {
+		errMsg = jobErr.Error()
+	}
+	entry := metadata.JobError{
+		Type:         metadata.JobErrorTypeExecution,
+		RetryAttempt: job.GetRetryCount(),
+		Error:        errMsg,
+		Timestamp:    time.Now().UTC(),
+	}
+	now := time.Now().UTC()
+
+	matched, err := s.writer.FailIfNotTerminal(ctx, jobID, entry, now)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fail job: %w", err)
+	}
+	if matched {
+		logEntry := metadata.NewJobLogWithContext(
+			jobID,
+			metadata.LogLevelError,
+			"Job failed",
+			map[string]any{
+				"error": errMsg,
+			},
+		)
+		if err := s.writer.AddLog(ctx, logEntry); err != nil {
+			log.Printf("warning: failed to log job failure: %v", err)
+		}
+		return nil
 	}
 
-	if err := model.AddError(jobErr); err != nil {
-		return fmt.Errorf("failed to add error: %w", err)
+	refreshed, err := s.reader.Get(ctx, jobID)
+	if err != nil {
+		return fmt.Errorf("failed to get job after fail miss: %w", err)
 	}
-
-	st := model.Status
-	errors := model.Errors
-	var completedAt *time.Time
-	if model.CompletedAt != nil {
-		t := *model.CompletedAt
-		completedAt = &t
+	if refreshed.GetStatus().IsTerminal() {
+		return metadata.ErrJobAlreadyTerminal
 	}
-	patch := metadata.UpdateJob{Status: &st, Errors: &errors, CompletedAt: completedAt}
-	if err := s.writer.Update(ctx, jobID, patch); err != nil {
-		return fmt.Errorf("failed to update job: %w", err)
-	}
-
-	logEntry := metadata.NewJobLogWithContext(
-		jobID,
-		metadata.LogLevelError,
-		"Job failed",
-		map[string]any{
-			"error": jobErr.Error(),
-		},
-	)
-	if err := s.writer.AddLog(ctx, logEntry); err != nil {
-		log.Printf("warning: failed to log job failure: %v", err)
-	}
-
-	return nil
+	return fmt.Errorf("unexpected job status %s for fail", refreshed.GetStatus())
 }
 
 // CancelJob cancels a job if it's not already in a terminal state.

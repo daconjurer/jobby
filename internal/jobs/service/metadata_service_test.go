@@ -20,8 +20,26 @@ type recordingJobsWriter struct {
 	markDispatchFailedCalls   []markDispatchFailedCall
 	markRunningMatched        bool
 	markRunningErr            error
+	completeIfRunningMatched  bool
+	completeIfRunningErr      error
+	completeIfRunningCalls    []completeIfRunningCall
+	failIfNotTerminalMatched  bool
+	failIfNotTerminalErr      error
+	failIfNotTerminalCalls    []failIfNotTerminalCall
 	logs                      []metadata.JobLog
 	createErr                 error
+}
+
+type completeIfRunningCall struct {
+	jobID       string
+	completedAt time.Time
+	metadata    *map[string]any
+}
+
+type failIfNotTerminalCall struct {
+	jobID       string
+	jobErr      metadata.JobError
+	completedAt time.Time
 }
 
 type recordAttemptCall struct {
@@ -74,6 +92,24 @@ func (w *recordingJobsWriter) MarkDispatchFailedIfPending(_ context.Context, job
 
 func (w *recordingJobsWriter) MarkRunningIfDispatched(_ context.Context, _ string, _ time.Time) (bool, error) {
 	return w.markRunningMatched, w.markRunningErr
+}
+
+func (w *recordingJobsWriter) CompleteIfRunning(_ context.Context, jobID string, completedAt time.Time, meta *map[string]any) (bool, error) {
+	w.completeIfRunningCalls = append(w.completeIfRunningCalls, completeIfRunningCall{
+		jobID:       jobID,
+		completedAt: completedAt,
+		metadata:    meta,
+	})
+	return w.completeIfRunningMatched, w.completeIfRunningErr
+}
+
+func (w *recordingJobsWriter) FailIfNotTerminal(_ context.Context, jobID string, jobErr metadata.JobError, completedAt time.Time) (bool, error) {
+	w.failIfNotTerminalCalls = append(w.failIfNotTerminalCalls, failIfNotTerminalCall{
+		jobID:       jobID,
+		jobErr:      jobErr,
+		completedAt: completedAt,
+	})
+	return w.failIfNotTerminalMatched, w.failIfNotTerminalErr
 }
 
 func (w *recordingJobsWriter) AddLog(_ context.Context, log metadata.JobLog) error {
@@ -301,8 +337,12 @@ func TestMetadataService_StartJob_WritesLogWhenMatched(t *testing.T) {
 	writer := &recordingJobsWriter{markRunningMatched: true}
 	svc := NewMetadataService(stubJobsReader{}, writer)
 
-	if err := svc.StartJob(ctx, "job-1"); err != nil {
+	matched, err := svc.StartJob(ctx, "job-1")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !matched {
+		t.Fatal("expected matched=true")
 	}
 	if len(writer.logs) != 1 {
 		t.Fatalf("logs=%d want 1", len(writer.logs))
@@ -319,8 +359,12 @@ func TestMetadataService_StartJob_SkipsLogWhenNotMatched(t *testing.T) {
 	writer := &recordingJobsWriter{markRunningMatched: false}
 	svc := NewMetadataService(stubJobsReader{job: job}, writer)
 
-	if err := svc.StartJob(ctx, job.JobID); err != nil {
+	matched, err := svc.StartJob(ctx, job.JobID)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if matched {
+		t.Fatal("expected matched=false")
 	}
 	if len(writer.logs) != 0 {
 		t.Fatalf("logs=%v want none", writer.logs)
@@ -333,10 +377,177 @@ func TestMetadataService_StartJob_HandlesGetErrorOnDuplicateDelivery(t *testing.
 	readerErr := errors.New("db down")
 	svc := NewMetadataService(stubJobsReader{err: readerErr}, writer)
 
-	if err := svc.StartJob(ctx, "job-1"); err != nil {
+	matched, err := svc.StartJob(ctx, "job-1")
+	if err != nil {
 		t.Fatal("expected no error on duplicate delivery even if Get fails")
+	}
+	if matched {
+		t.Fatal("expected matched=false")
 	}
 	if len(writer.logs) != 0 {
 		t.Fatalf("logs=%v want none", writer.logs)
+	}
+}
+
+func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromFailed(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
+	job.Status = metadata.JobStatusFailed
+	now := time.Now()
+	job.StartedAt = &now
+	job.CompletedAt = &now
+	job.Errors = []metadata.JobError{{Type: metadata.JobErrorTypeExecution, RetryAttempt: 0, Error: "test error", Timestamp: now}}
+
+	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
+
+	err := svc.CompleteJob(ctx, job.JobID, nil)
+	if !errors.Is(err, metadata.ErrJobAlreadyTerminal) {
+		t.Fatalf("expected ErrJobAlreadyTerminal, got %v", err)
+	}
+}
+
+func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromCompleted(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
+	job.Status = metadata.JobStatusCompleted
+	now := time.Now()
+	job.StartedAt = &now
+	job.CompletedAt = &now
+
+	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
+
+	err := svc.CompleteJob(ctx, job.JobID, nil)
+	if !errors.Is(err, metadata.ErrJobAlreadyTerminal) {
+		t.Fatalf("expected ErrJobAlreadyTerminal, got %v", err)
+	}
+}
+
+func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromCancelled(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
+	job.Status = metadata.JobStatusCancelled
+	now := time.Now()
+	job.StartedAt = &now
+	job.CompletedAt = &now
+
+	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
+
+	err := svc.CompleteJob(ctx, job.JobID, nil)
+	if !errors.Is(err, metadata.ErrJobAlreadyTerminal) {
+		t.Fatalf("expected ErrJobAlreadyTerminal, got %v", err)
+	}
+}
+
+func TestMetadataService_CompleteJob_SucceedsFromRunning(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
+	job.Status = metadata.JobStatusRunning
+	now := time.Now()
+	job.StartedAt = &now
+	writer := &recordingJobsWriter{completeIfRunningMatched: true}
+
+	svc := NewMetadataService(stubJobsReader{job: job}, writer)
+
+	err := svc.CompleteJob(ctx, job.JobID, nil)
+	if err != nil {
+		t.Fatalf("expected no error from running status, got %v", err)
+	}
+	if len(writer.completeIfRunningCalls) != 1 {
+		t.Fatalf("completeIfRunningCalls=%v", writer.completeIfRunningCalls)
+	}
+	if len(writer.logs) != 1 || writer.logs[0].Message != "Job completed successfully" {
+		t.Fatalf("logs=%v", writer.logs)
+	}
+}
+
+func TestMetadataService_FailJob_ReturnsErrJobAlreadyTerminalFromFailed(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
+	job.Status = metadata.JobStatusFailed
+	now := time.Now()
+	job.StartedAt = &now
+	job.CompletedAt = &now
+	job.Errors = []metadata.JobError{{Type: metadata.JobErrorTypeExecution, RetryAttempt: 0, Error: "test error", Timestamp: now}}
+
+	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
+
+	err := svc.FailJob(ctx, job.JobID, errors.New("new error"))
+	if !errors.Is(err, metadata.ErrJobAlreadyTerminal) {
+		t.Fatalf("expected ErrJobAlreadyTerminal, got %v", err)
+	}
+}
+
+func TestMetadataService_FailJob_ReturnsErrJobAlreadyTerminalFromCompleted(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
+	job.Status = metadata.JobStatusCompleted
+	now := time.Now()
+	job.StartedAt = &now
+	job.CompletedAt = &now
+
+	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
+
+	err := svc.FailJob(ctx, job.JobID, errors.New("new error"))
+	if !errors.Is(err, metadata.ErrJobAlreadyTerminal) {
+		t.Fatalf("expected ErrJobAlreadyTerminal, got %v", err)
+	}
+}
+
+func TestMetadataService_FailJob_ReturnsErrJobAlreadyTerminalFromCancelled(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
+	job.Status = metadata.JobStatusCancelled
+	now := time.Now()
+	job.StartedAt = &now
+	job.CompletedAt = &now
+
+	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
+
+	err := svc.FailJob(ctx, job.JobID, errors.New("new error"))
+	if !errors.Is(err, metadata.ErrJobAlreadyTerminal) {
+		t.Fatalf("expected ErrJobAlreadyTerminal, got %v", err)
+	}
+}
+
+func TestMetadataService_FailJob_SucceedsFromRunning(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
+	job.Status = metadata.JobStatusRunning
+	now := time.Now()
+	job.StartedAt = &now
+	writer := &recordingJobsWriter{failIfNotTerminalMatched: true}
+
+	svc := NewMetadataService(stubJobsReader{job: job}, writer)
+
+	err := svc.FailJob(ctx, job.JobID, errors.New("handler error"))
+	if err != nil {
+		t.Fatalf("expected no error from running status, got %v", err)
+	}
+	if len(writer.failIfNotTerminalCalls) != 1 {
+		t.Fatalf("failIfNotTerminalCalls=%v", writer.failIfNotTerminalCalls)
+	}
+	got := writer.failIfNotTerminalCalls[0]
+	if got.jobErr.Error != "handler error" || got.jobErr.Type != metadata.JobErrorTypeExecution {
+		t.Fatalf("jobErr=%+v", got.jobErr)
+	}
+	if len(writer.logs) != 1 || writer.logs[0].Message != "Job failed" {
+		t.Fatalf("logs=%v", writer.logs)
+	}
+}
+
+func TestMetadataService_FailJob_SucceedsFromDispatched(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
+	job.Status = metadata.JobStatusDispatched
+	writer := &recordingJobsWriter{failIfNotTerminalMatched: true}
+
+	svc := NewMetadataService(stubJobsReader{job: job}, writer)
+
+	err := svc.FailJob(ctx, job.JobID, errors.New("api fail"))
+	if err != nil {
+		t.Fatalf("expected no error from dispatched status, got %v", err)
+	}
+	if len(writer.failIfNotTerminalCalls) != 1 {
+		t.Fatalf("failIfNotTerminalCalls=%v", writer.failIfNotTerminalCalls)
 	}
 }

@@ -29,10 +29,10 @@ type JobMetadata interface {
 	GetCompletedAt() *time.Time
 
 	// GetPayload returns the job-specific data (dynamic schema per job type)
-	GetPayload() interface{}
+	GetPayload() any
 
 	// GetMetadata returns additional metadata fields as key-value pairs
-	GetMetadata() map[string]interface{}
+	GetMetadata() map[string]any
 
 	// GetErrors returns the complete error history across all retry attempts
 	GetErrors() []JobError
@@ -91,6 +91,11 @@ func (s JobStatus) IsTerminal() bool {
 // IsDispatchPhase returns true while the job may not yet be consumed or dispatch can be retried.
 func (s JobStatus) IsDispatchPhase() bool {
 	return s == JobStatusPendingDispatch || s == JobStatusDispatched || s == JobStatusDispatchFailed
+}
+
+// IsRunning returns true if the job status is 'running' (mostly for consistency).
+func (s JobStatus) IsRunning() bool {
+	return s == JobStatusRunning
 }
 
 // CanTransitionTo checks if transitioning from current status to target status is valid
@@ -163,6 +168,12 @@ type JobsWriter interface {
 	// MarkRunningIfDispatched transitions dispatched → running atomically.
 	// Returns (true, nil) on success, (false, nil) if job not dispatched (idempotent duplicate).
 	MarkRunningIfDispatched(ctx context.Context, jobID string, startedAt time.Time) (bool, error)
+	// CompleteIfRunning sets status=completed when jobId matches and status=running.
+	// Returns (true, nil) on match, (false, nil) if not running.
+	CompleteIfRunning(ctx context.Context, jobID string, completedAt time.Time, metadata *map[string]any) (bool, error)
+	// FailIfNotTerminal appends execution error and sets status=failed when status is running or dispatched.
+	// Returns (true, nil) on match, (false, nil) if already terminal or not fail-able.
+	FailIfNotTerminal(ctx context.Context, jobID string, jobErr JobError, completedAt time.Time) (bool, error)
 	AddLog(ctx context.Context, log JobLog) error
 	DeleteOldLogs(ctx context.Context, olderThan time.Duration) (int64, error)
 }

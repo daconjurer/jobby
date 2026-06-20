@@ -13,8 +13,10 @@ type JobExecutor[T any] interface {
 // JobLifecycle models the valid operations on a Job once it has been dispatched
 type JobLifecycle interface {
 	// StartJob transitions a job from dispatched to running atomically.
-	// Returns error only on infrastructure failures (not duplicate delivery).
-	StartJob(ctx context.Context, jobID string) error
+	// Returns (matched, error) where matched=true means the transition occurred.
+	// matched=false means job wasn't in dispatched state (duplicate delivery or already terminal).
+	// Returns error only on infrastructure failures.
+	StartJob(ctx context.Context, jobID string) (bool, error)
 
 	// CompleteJob marks a job as completed with optional result data.
 	CompleteJob(ctx context.Context, jobID string, result map[string]any) error
