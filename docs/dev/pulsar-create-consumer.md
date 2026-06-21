@@ -1,6 +1,6 @@
 # `PulsarClient.CreateConsumer` — design notes
 
-Internal reference for [`internal/jobs/pulsar/client.go`](../../internal/jobs/pulsar/client.go). Phase 1 introduces this pattern; Phase 3 (`PulsarJobMessageConsumer`) will build on it.
+Internal reference for [`internal/jobs/pulsar/client.go`](../../internal/jobs/pulsar/client.go). The executor uses a separate consumer type — [`PulsarJobConsumer`](../../internal/jobs/pulsar/consumer.go) — with explicit `Receive()` loops and ack/nack policy.
 
 ## What the method does
 
@@ -29,14 +29,14 @@ go func() {
 | `MessageChannel` | Tells the official client to deliver via `ch` instead of only `Receive()`. |
 | `go func() { ... }()` | `CreateConsumer` returns without blocking in a receive loop. |
 | `for cm := range ch` | Blocks until the next message; exits when `ch` is closed (typically after `consumer.Close()`). |
-| `messageHandler(...)` | Application logic (decode `JobMessage`, ack/nack in Phase 3). Runs **synchronously** in this goroutine. |
+| `messageHandler(...)` | Application logic (decode `JobMessage`, ack/nack). Runs **synchronously** in this goroutine. |
 
 **Implications**
 
 - **One goroutine per consumer** — messages for that subscription are handled sequentially unless the handler spawns its own work.
 - **Backpressure** — a slow `messageHandler` keeps the goroutine busy; the channel and client `ReceiverQueueSize` can fill and slow broker delivery.
 - **Panics** — an uncaught panic in `messageHandler` terminates only that goroutine; there is no recovery in the loop.
-- **Not Java `MessageListener`** — the Go client has no equivalent callback API; channel + loop (or explicit `Receive()` in Phase 3) is the idiomatic approach.
+- **Not Java `MessageListener`** — the Go client has no equivalent callback API; channel + loop (or explicit `Receive()` as in `PulsarJobConsumer`) is the idiomatic approach.
 
 ## Mutex: manual `Unlock()` vs `defer`
 
@@ -63,7 +63,7 @@ Use `defer` locally around the append if the guarded region grows (multiple retu
 
 - `Close()` closes tracked consumers, then producers, then the client (see `client.go`).
 - Closing a consumer should close `MessageChannel`, which ends the `for range` loop and stops the listener goroutine.
-- Phase 3/4 should document ack/nack and context cancellation in the handler; Phase 1 does not wire signal handling here.
+- `CreateConsumer` does not wire signal handling here; callers or higher-level wrappers (such as `PulsarJobConsumer.Run`) own context cancellation and ack/nack policy.
 
 ## Related configuration
 
@@ -73,6 +73,5 @@ Use `defer` locally around the append if the guarded region grows (multiple retu
 
 ## See also
 
-- [Phase 1 planning](../../planning/pulsar-job-executor/phase-1.md) — ports and client wrapper scope.
-- [Phase 3 planning](../../planning/pulsar-job-executor/phase-3.md) — `PulsarJobMessageConsumer.Run`, ack/nack policy.
+- [`PulsarJobConsumer`](../../internal/jobs/pulsar/consumer.go) — executor receive loop, ack/nack, and multi-topic subscription.
 - [Pulsar Go client docs](https://pulsar.apache.org/docs/client-libraries-go-use/) — `Subscribe`, `MessageChannel`, Shared subscriptions.

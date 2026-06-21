@@ -139,7 +139,7 @@ flowchart TB
         LOOP --> H2["DispatchHandler.HandleDispatch(projection)"]
     end
 
-    subgraph saga["dispatch.DispatchHandler — phases 2–3"]
+    subgraph saga["dispatch.DispatchHandler — publish + confirm"]
         TOPIC{"topic empty?"}
         PUB["JobDispatchPublisher.Publish(projection)"]
         OK["jobs.MarkJobDispatched"]
@@ -170,7 +170,7 @@ flowchart TB
     DFAIL --> META
     FETCH --> JOBS_COLL
 
-    subgraph upstream["Upstream (phase 1 — not in Worker)"]
+    subgraph upstream["Upstream (persist — not in Worker)"]
         HTTP["POST /api/jobs"]
         ENQ["EnqueueService → CreateJob"]
         INS["INSERT pending_dispatch + topic"]
@@ -188,7 +188,7 @@ flowchart TB
 ### End-to-end flow
 
 ```text
-Phase 1 (HTTP)          Phase 2–3 (Worker)
+Persist (HTTP)          Publish + confirm (Worker)
 ─────────────────       ─────────────────────────────────────
 Enqueue → INSERT        ┌─ Change stream (primary, fast)
   pending_dispatch      │
@@ -210,4 +210,4 @@ Enqueue → INSERT        ┌─ Change stream (primary, fast)
 | **Change stream** | Low-latency reaction to new `pending_dispatch` rows after enqueue. |
 | **Poll** | Safety net: stream gaps, restarts without resume token, publish retries left in `pending_dispatch`, broker outages. |
 
-HTTP returns **201** after phase 1; phases 2–3 run asynchronously in the dispatch worker.
+HTTP returns **201** after the persist step; publish and confirm run asynchronously in the dispatch worker.

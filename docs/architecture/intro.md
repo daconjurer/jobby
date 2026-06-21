@@ -46,8 +46,8 @@ This project is a microservices-based system for distributed workloads.
                         └────────────────────┘
 ```
 
-1. **`POST /api/jobs`** on `jobs-server` resolves a topic from `config/job-topics.yaml` and inserts `pending_dispatch` into MongoDB (saga phase 1).
-2. **`jobs-dispatcher`** reacts via change stream (primary) and poll (fallback), publishes a `JobMessage` to Pulsar (phase 2), then updates status to `dispatched` or records retry / `dispatch_failed` (phase 3).
+1. **`POST /api/jobs`** on `jobs-server` resolves a topic from `config/job-topics.yaml` and inserts `pending_dispatch` into MongoDB (saga **persist** step).
+2. **`jobs-dispatcher`** reacts via change stream (primary) and poll (fallback), publishes a `JobMessage` to Pulsar (**publish**), then updates status to `dispatched` or records retry / `dispatch_failed` (**confirm**).
 3. **`jobs-executor`** consumes the message from Pulsar, transitions job to `running`, executes the registered handler, and marks job as `completed` or `failed`.
 
 **Client polling:** After enqueue, poll `GET /api/jobs/:id` until `status` is `completed`, `failed`, or `cancelled`. Typical flow: `pending_dispatch` → `dispatched` → `running` → `completed`.

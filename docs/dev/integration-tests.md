@@ -1,7 +1,7 @@
 Integration tests: services, tasks, and stack tiers
 ===================================================
 
-This document summarizes which Docker Compose services and Task commands are required for integration testing in this repo. It complements **[setup.md](./setup.md)** (local dev) and the more detailed internal runbook at **`docs/internal/integration-test-isolation.md`** (local-only; that path is gitignored).
+This document summarizes which Docker Compose services and Task commands are required for integration testing in this repo. It complements **[setup.md](./setup.md)** (local dev).
 
 ---
 
@@ -180,7 +180,7 @@ go test -tags=integration -p 1 -count=1 -v \
 
 Pulsar and app services not required.
 
-### Executor saga + terminal race (safe-job-failure Phase 3)
+### Executor saga + terminal race
 
 ```sh
 docker compose down -v && task mongo-up && docker compose up -d pulsar

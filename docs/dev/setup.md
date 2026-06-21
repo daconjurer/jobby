@@ -104,7 +104,7 @@ Database name and collection names align with what **`migrations/001_initialize_
 
 **`github.com/apache/pulsar-client-go`** is in the Go module (CGO/native libs; CI uses **`dockerpaps/golang-for-ci`** in [pre-test](../../.github/actions/pre-test/action.yaml)).
 
-**Phase 2–4 (dispatch + execution):** `POST /api/jobs` on **`jobs-server`** persists **`pending_dispatch`** with embedded **`topic`**. **`jobs-dispatcher`** publishes to Pulsar (change stream + poll). **`jobs-executor`** consumes from Pulsar, executes handlers, and updates job status. Configure:
+**Dispatch and execution:** `POST /api/jobs` on **`jobs-server`** persists **`pending_dispatch`** with embedded **`topic`**. **`jobs-dispatcher`** publishes to Pulsar (change stream + poll). **`jobs-executor`** consumes from Pulsar, executes handlers, and updates job status. Configure:
 
 - **`JOB_TOPICS_CONFIG_PATH`** on the API and executor — defaults to **`config/job-topics.yaml`**
 - **`PULSAR_SERVICE_URL`**, **`DISPATCH_*`** on the dispatcher — see [**.env.example**](../../.env.example)
@@ -129,7 +129,7 @@ Integration tests no longer use the Go **`integration` build tag**. They are alw
 
 ## Integration test categories
 
-Integration tests are grouped by infrastructure dependencies (see [planning/tests-in-ci/phase-2.md](../../planning/tests-in-ci/phase-2.md)). Tasks live in **[taskfiles/integration/Taskfile.yml](../../taskfiles/integration/Taskfile.yml)** (included from the root Taskfile). Each category task sets **`INTEGRATION_TESTS=true`**, loads **`.env`**, and runs a fixed package path.
+Integration tests are grouped by infrastructure dependencies (see the table below and **[integration-tests.md](./integration-tests.md)**). Tasks live in **[taskfiles/integration/Taskfile.yml](../../taskfiles/integration/Taskfile.yml)** (included from the root Taskfile). Each category task sets **`INTEGRATION_TESTS=true`**, loads **`.env`**, and runs a fixed package path.
 
 | Category | Task | Compose services |
 |----------|------|------------------|
@@ -163,7 +163,7 @@ docker compose up -d jobs-server jobs-dispatcher jobs-executor
 task test-e2e
 ```
 
-Convenience tasks set **`INTEGRATION_TESTS=true`** and **`TEST_CATEGORY`** internally. CI (Phase 5) can call either a convenience task or the core runner with explicit env:
+Convenience tasks set **`INTEGRATION_TESTS=true`** and **`TEST_CATEGORY`** internally. CI can call either a convenience task or the core runner with explicit env:
 
 ```sh
 # Full suite (needs Mongo + Pulsar; E2E needs full stack)

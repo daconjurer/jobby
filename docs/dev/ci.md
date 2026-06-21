@@ -21,9 +21,9 @@ Integration jobs call the reusable **[`integration-tests.yaml`](../../.github/wo
 
 Integration jobs are **validated in CI** (2026-06-21): all five categories pass; full pipeline soak ≥3 consecutive green runs; slowest job (`integration-dispatch`) completes in under 4 minutes.
 
-## Running CI Locally (Phase 7)
+## Running CI locally
 
-**Phase 7** moves CI orchestration from GitHub Actions YAML into **Task recipes**, enabling local reproduction of the exact CI flow.
+CI orchestration lives in **Task recipes** as well as GitHub Actions YAML, so you can reproduce the exact CI flow on your machine.
 
 ### Task-based CI tasks
 
@@ -89,7 +89,7 @@ On both success and failure, compose logs are written to **`ci-compose.log`** in
 2. **`docker/login-action`** — same Docker Hub auth as pre-tests
 3. Composite action **[`.github/actions/unit-test/`](../../.github/actions/unit-test)** runs **`task test`** inside the CI container.
 
-The unit-tests job runs **`task test`** (`go test ./...` without **`INTEGRATION_TESTS`**). Integration-tagged tests skip at runtime; only unit tests execute (fast, no infrastructure dependencies). Integration jobs (Phase 5) call category tasks such as **`task test-integration-mongodb`**, which set **`INTEGRATION_TESTS=true`** internally.
+The unit-tests job runs **`task test`** (`go test ./...` without **`INTEGRATION_TESTS`**). Integration-tagged tests skip at runtime; only unit tests execute (fast, no infrastructure dependencies). Integration jobs call category tasks such as **`task test-integration-mongodb`**, which set **`INTEGRATION_TESTS=true`** internally.
 
 ### Integration test jobs
 
@@ -98,11 +98,11 @@ Category integration jobs call **[`.github/workflows/integration-tests.yaml`](..
 | Input | Purpose |
 |-------|---------|
 | **`category`** | Test category (`mongodb`, `pulsar`, …) — runs **`task test-integration-ci-<category>`** |
-| **`compose_services`** | (Legacy input, unused in Phase 7 task-based approach) |
+| **`compose_services`** | (Legacy input, unused in the task-based approach) |
 
 Each job runs on the **GitHub runner** using the runner's built-in Docker daemon (not Docker-in-Docker). Tests hit published ports on **`localhost`** (e.g. **`27018`** for MongoDB), matching **`.env.example`** defaults and local development. Toolchain setup is handled by **[`.github/actions/integration-setup/`](../../.github/actions/integration-setup)** (pinned Task **`v3.49.1`**, cached).
 
-**Startup sequence** (Phase 7 task-based orchestration):
+**Startup sequence** (task-based orchestration):
 
 1. **`actions/checkout`**
 2. **[`.github/actions/integration-setup/`](../../.github/actions/integration-setup)** — Docker login, Go, pinned Task install, **`.env`** prep

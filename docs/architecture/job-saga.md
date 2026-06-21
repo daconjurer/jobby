@@ -1,49 +1,49 @@
 # Job dispatch saga
 
-How a job moves from HTTP enqueue to Pulsar publish and a confirmed MongoDB status. This is the **saga protocol** (phases 1–3), not the pulsar-job-executor project milestones.
+How a job moves from HTTP enqueue to Pulsar publish and a confirmed MongoDB status. This is the **dispatch saga protocol** — three steps: **persist**, **publish**, and **confirm**.
 
 For worker wiring (change stream, poll fallback, Compose), see [dispatch-worker.md](./dispatch-worker.md).
 
 ---
 
-## Phases
+## Saga steps
 
-| Phase | Action | System of record |
-|-------|--------|------------------|
-| **1** | Persist job with dispatch intent (`status: pending_dispatch`, resolved `topic`, payload) | MongoDB `job_metadata` |
-| **2** | Publish `JobMessage` to Pulsar (message key = `jobId`) | Pulsar |
-| **3** | Confirm outcome: `dispatched`, or record retry / `dispatch_failed` | MongoDB `job_metadata` |
+| Step | Action | System of record |
+|------|--------|------------------|
+| **Persist** | Save job with dispatch intent (`status: pending_dispatch`, resolved `topic`, payload) | MongoDB `job_metadata` |
+| **Publish** | Send `JobMessage` to Pulsar (message key = `jobId`) | Pulsar |
+| **Confirm** | Record outcome: `dispatched`, or retry / `dispatch_failed` | MongoDB `job_metadata` |
 
-**HTTP contract:** phase 1 completes on **201**. Phases 2–3 run asynchronously in `cmd/jobs-dispatcher`.
+**HTTP contract:** the persist step completes on **201**. Publish and confirm run asynchronously in `cmd/jobs-dispatcher`.
 
-**Recovery model:** forward retry while `pending_dispatch`; no rollback of phase 1. Publish (phase 2) is safe to repeat; status updates (phase 3) use conditional writes on `status`.
+**Recovery model:** forward retry while `pending_dispatch`; no rollback of the persist step. Publish is safe to repeat; confirm uses conditional writes on `status`.
 
 ---
 
 ## Code map
 
 ```text
-Phase 1 — persist
+Persist
   POST /api/jobs | jobs-cli create
     → service.EnqueueService.Enqueue
     → service.MetadataService.CreateJob
 
-Phases 2–3 — publish + confirm
+Publish + confirm
   dispatch.Worker (change stream + poll)
     → dispatch.JobDispatchHandler.HandleDispatch
-       phase 2: dispatch.JobDispatchPublisher.Publish
+       publish: dispatch.JobDispatchPublisher.Publish
                  (Pulsar: pulsar.DispatchPublisher → pulsar.JobProducer)
-       phase 3: dispatch.JobUpdater (MetadataService)
+       confirm: dispatch.JobUpdater (MetadataService)
                  MarkJobDispatched | RecordDispatchAttempt | MarkJobDispatchFailed
 ```
 
-`JobDispatchHandler` implementors (notably `*dispatch.DispatchHandler`) orchestrate **phases 2–3** for one `JobDispatchProjection` per call. Phase 2 is delegated to `JobDispatchPublisher`; Pulsar wiring lives in `internal/jobs/pulsar/` and is composed in `cmd/jobs-dispatcher`. Triggers pass projections built from `pending_dispatch` rows via `JobDispatchFromMetadata`.
+`JobDispatchHandler` implementors (notably `*dispatch.DispatchHandler`) orchestrate **publish and confirm** for one `JobDispatchProjection` per call. Publish is delegated to `JobDispatchPublisher`; Pulsar wiring lives in `internal/jobs/pulsar/` and is composed in `cmd/jobs-dispatcher`. Triggers pass projections built from `pending_dispatch` rows via `JobDispatchFromMetadata`.
 
 ---
 
-## `HandleDispatch` outcomes (phase 3)
+## `HandleDispatch` outcomes (confirm step)
 
-| Publish result | Phase 3 action |
+| Publish result | Confirm action |
 |----------------|----------------|
 | Success | `MarkJobDispatched` → `dispatched` |
 | Error, attempts remaining | `RecordDispatchAttempt` → stay `pending_dispatch` (poll/stream retries) |
