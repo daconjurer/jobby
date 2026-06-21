@@ -5,15 +5,20 @@ Workflows live under **[`.github/workflows/`](../../.github/workflows)**.
 
 ## CI Jobs
 
-The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, triggering these parallel jobs:
+The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, triggering these jobs in order:
 
-- **`pre-tests`** — format and lint checks
-- **`unit-tests`** — unit test execution
-- **`integration-mongodb`** — MongoDB integration tests via reusable **[`integration-tests.yaml`](../../.github/workflows/integration-tests.yaml)** workflow (runner Docker + Compose)
-- **`integration-cli`** — jobs-cli integration tests (same Mongo stack as **`integration-mongodb`**)
-- **`integration-http`** — HTTP handler integration tests (same Mongo stack as **`integration-mongodb`**)
-- **`integration-pulsar`** — Pulsar producer/topic integration tests (`pulsar` only)
-- **`integration-dispatch`** — dispatch saga integration tests (Mongo + Pulsar; no app worker containers)
+1. **`pre-tests`** — format and lint checks
+2. **`unit-tests`** — unit test execution (runs only if **`pre-tests`** succeeds)
+3. **Integration jobs** — run in parallel with each other, but only if **`unit-tests`** succeeds:
+   - **`integration-mongodb`**
+   - **`integration-cli`**
+   - **`integration-http`**
+   - **`integration-pulsar`**
+   - **`integration-dispatch`**
+
+Integration jobs call the reusable **[`integration-tests.yaml`](../../.github/workflows/integration-tests.yaml)** workflow (runner Docker + Compose).
+
+Integration jobs are **validated in CI** (2026-06-21): all five categories pass; full pipeline soak ≥3 consecutive green runs; slowest job (`integration-dispatch`) completes in under 4 minutes.
 
 ### Pre-tests job
 
@@ -38,18 +43,21 @@ Category integration jobs call **[`.github/workflows/integration-tests.yaml`](..
 | **`category`** | Test category (`mongodb`, `pulsar`, …) — sets **`TEST_CATEGORY`** and runs **`task test-integration-<category>`** |
 | **`compose_services`** | Space-separated Compose services to start for that category |
 
-Each job runs on the **GitHub runner** using the runner's built-in Docker daemon (not Docker-in-Docker). Tests hit published ports on **`localhost`** (e.g. **`27018`** for MongoDB), matching **`.env.example`** defaults and local development.
+Each job runs on the **GitHub runner** using the runner's built-in Docker daemon (not Docker-in-Docker). Tests hit published ports on **`localhost`** (e.g. **`27018`** for MongoDB), matching **`.env.example`** defaults and local development. Each job installs Task via **[`.github/actions/install-task/`](../../.github/actions/install-task)** (pinned **`v3.49.1`** release tarball, cached) after **`actions/setup-go`**.
 
 **Startup sequence** (in the reusable workflow):
 
-1. Copy **`.env.example`** → **`.env`** and run **`task mongo-replica-key`**
-2. **`docker compose up -d`** for all services except **`migrate`**
-3. **`scripts/wait-for-compose-services.sh`** until background services are healthy or one-shot containers exit 0
-4. If **`migrate`** is listed: **`docker compose build migrate`**, then run migrate in the foreground
-5. **`task test-integration-<category>`** with **`INTEGRATION_TESTS=true`**
-6. **`docker compose down -v`** (always, even on failure)
+1. Resolve **`compose_services`** (from caller or category defaults when run via **`workflow_dispatch`**)
+2. Copy **`.env.example`** → **`.env`** and run **`task mongo-replica-key`**
+3. **`docker compose pull`** then **`docker compose up -d`** for all services except **`migrate`**
+4. **`scripts/wait-for-compose-services.sh`** until background services are healthy or one-shot containers exit 0
+5. If **`migrate`** is listed: **`docker compose build migrate`**, then run migrate in the foreground
+6. **`task test-integration-<category>`** with **`INTEGRATION_TESTS=true`**
+7. **`docker compose down -v`** (always, even on failure)
 
-On failure, **`docker compose logs`** is printed for all services listed in **`compose_services`**.
+On failure, **`docker compose logs`** is printed to the job log and uploaded as an Actions artifact (**`integration-<category>-compose-logs`**).
+
+**Manual re-run:** open the **`integration-tests`** workflow in Actions and use **Run workflow** (**`workflow_dispatch`**) with a single **`category`** input (Compose services are derived automatically).
 
 #### integration-mongodb
 

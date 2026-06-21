@@ -7,14 +7,27 @@ on:
         required: true
         type: string
       compose_services:
-        required: true
+        required: false
         type: string
+        default: ""
         description: Space-separated Compose services (e.g. "mongodb mongo-init migrate")
     secrets:
       DOCKER_USERNAME:
         required: true
       DOCKER_PASSWORD:
         required: true
+  workflow_dispatch:
+    inputs:
+      category:
+        required: true
+        type: choice
+        description: Integration test category to run
+        options:
+          - mongodb
+          - pulsar
+          - dispatch
+          - http
+          - cli
 
 jobs:
   integration:
@@ -29,6 +42,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Resolve Compose services
+        id: compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          services="${{ inputs.compose_services }}"
+          if [ -z "$services" ]; then
+            case "${{ inputs.category }}" in
+              mongodb|http|cli) services="mongodb mongo-init migrate" ;;
+              pulsar) services="pulsar" ;;
+              dispatch) services="mongodb mongo-init migrate pulsar" ;;
+              *)
+                echo "unknown category: ${{ inputs.category }}" >&2
+                exit 1
+                ;;
+            esac
+          fi
+          echo "services=$services" >> "$GITHUB_OUTPUT"
+
       - name: Log in to Docker Hub
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
         with:
@@ -42,7 +74,7 @@ jobs:
           cache: true
 
       - name: Install Task
-        run: go install github.com/go-task/task/v3/cmd/task@latest
+        uses: ./.github/actions/install-task
 
       - name: Prepare environment
         run: |
@@ -51,7 +83,7 @@ jobs:
 
       - name: Start Compose services
         env:
-          COMPOSE_SERVICES: ${{ inputs.compose_services }}
+          COMPOSE_SERVICES: ${{ steps.compose.outputs.services }}
         run: |
           set -euo pipefail
           background=""
@@ -69,6 +101,7 @@ jobs:
             echo "compose_services must include at least one non-migrate service" >&2
             exit 1
           fi
+          docker compose pull $background
           docker compose up -d $background
           ./scripts/wait-for-compose-services.sh "$wait_services"
           if $has_migrate; then
@@ -76,11 +109,21 @@ jobs:
             docker compose up --exit-code-from migrate --abort-on-container-exit migrate
           fi
 
-      - name: Show service logs on failure
+      - name: Collect Compose logs on failure
         if: failure()
         env:
-          COMPOSE_SERVICES: ${{ inputs.compose_services }}
-        run: docker compose logs $COMPOSE_SERVICES
+          COMPOSE_SERVICES: ${{ steps.compose.outputs.services }}
+        run: |
+          docker compose logs $COMPOSE_SERVICES | tee compose-failure.log
+
+      - name: Upload Compose logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-${{ inputs.category }}-compose-logs
+          path: compose-failure.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Run integration tests
         run: task test-integration-${{ inputs.category }}

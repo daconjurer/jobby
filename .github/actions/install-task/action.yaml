@@ -1,0 +1,42 @@
+name: Install Task
+description: Install a pinned Task binary from GitHub releases (cached in runner tool cache)
+inputs:
+  version:
+    description: Task release tag (e.g. v3.49.1)
+    required: false
+    default: v3.49.1
+runs:
+  using: composite
+  steps:
+    - name: Resolve Task arch
+      shell: bash
+      run: |
+        case "$(uname -m)" in
+          x86_64) echo "TASK_ARCH=amd64" >> "$GITHUB_ENV" ;;
+          aarch64|arm64) echo "TASK_ARCH=arm64" >> "$GITHUB_ENV" ;;
+          *)
+            echo "unsupported architecture: $(uname -m)" >&2
+            exit 1
+            ;;
+        esac
+
+    - name: Cache Task binary
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.tool_cache }}/task
+        key: task-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Download Task
+      shell: bash
+      run: |
+        set -euo pipefail
+        task_dir="${{ runner.tool_cache }}/task"
+        mkdir -p "$task_dir"
+        if [ ! -x "$task_dir/task" ]; then
+          curl -fsSL \
+            "https://github.com/go-task/task/releases/download/${{ inputs.version }}/task_linux_${TASK_ARCH}.tar.gz" \
+            | tar xz -C "$task_dir" task
+          chmod +x "$task_dir/task"
+        fi
+        echo "$task_dir" >> "$GITHUB_PATH"
+        task --version
