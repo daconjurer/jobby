@@ -76,6 +76,38 @@ tasks:
           CATEGORY: mongodb
           SERVICES: mongodb mongo-init migrate
 
+  test-integration-ci-pulsar:
+    desc: Integration CI flow for pulsar category (matches GitHub Actions; local reproduction)
+    cmds:
+      - task: ci-integration-run
+        vars:
+          CATEGORY: pulsar
+          SERVICES: pulsar
+
+  test-integration-ci-dispatch:
+    desc: Integration CI flow for dispatch category (matches GitHub Actions; local reproduction)
+    cmds:
+      - task: ci-integration-run
+        vars:
+          CATEGORY: dispatch
+          SERVICES: mongodb mongo-init migrate pulsar
+
+  test-integration-ci-http:
+    desc: Integration CI flow for http category (matches GitHub Actions; local reproduction)
+    cmds:
+      - task: ci-integration-run
+        vars:
+          CATEGORY: http
+          SERVICES: mongodb mongo-init migrate
+
+  test-integration-ci-cli:
+    desc: Integration CI flow for cli category (matches GitHub Actions; local reproduction)
+    cmds:
+      - task: ci-integration-run
+        vars:
+          CATEGORY: cli
+          SERVICES: mongodb mongo-init migrate
+
   ci-integration-run:
     internal: true
     dotenv:
