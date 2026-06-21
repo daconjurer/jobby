@@ -1,9 +1,11 @@
 name: Integration setup
 description: Checkout, Docker login, Go, Task, and .env preparation for integration jobs
-secrets:
-  DOCKER_USERNAME:
+inputs:
+  docker_username:
+    description: Docker Hub username
     required: true
-  DOCKER_PASSWORD:
+  docker_password:
+    description: Docker Hub password or PAT
     required: true
 runs:
   using: composite
@@ -14,8 +16,8 @@ runs:
     - name: Log in to Docker Hub
       uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
       with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+        username: ${{ inputs.docker_username }}
+        password: ${{ inputs.docker_password }}
 
     - name: Set up Go
       uses: actions/setup-go@v5

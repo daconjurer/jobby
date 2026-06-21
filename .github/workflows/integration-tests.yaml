@@ -65,9 +65,9 @@ jobs:
 
       - name: Set up integration job
         uses: ./.github/actions/integration-setup
-        secrets:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        with:
+          docker_username: ${{ secrets.DOCKER_USERNAME }}
+          docker_password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Start Compose services
         env:
