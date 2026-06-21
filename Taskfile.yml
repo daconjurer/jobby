@@ -7,6 +7,9 @@ includes:
     flatten: true
     vars:
       INTEGRATION_TEST_FLAGS: "{{.INTEGRATION_TEST_FLAGS}}"
+  ci:
+    taskfile: ./taskfiles/ci/Taskfile.yml
+    flatten: true
 
 vars:
   INTEGRATION_TEST_FLAGS: -p 1 -parallel 1 -count=1
@@ -194,6 +197,11 @@ tasks:
     cmds:
       - task: mongo-replica-key
       - docker compose up -d
+
+  compose-wait-full:
+    desc: Wait for full Compose stack readiness (Mongo, Pulsar, jobs-server HTTP health)
+    cmds:
+      - ./scripts/compose-wait-full.sh
 
   docker-down:
     cmds:
