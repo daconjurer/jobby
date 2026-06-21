@@ -21,6 +21,46 @@ Integration jobs call the reusable **[`integration-tests.yaml`](../../.github/wo
 
 Integration jobs are **validated in CI** (2026-06-21): all five categories pass; full pipeline soak ≥3 consecutive green runs; slowest job (`integration-dispatch`) completes in under 4 minutes.
 
+## Running CI Locally (Phase 7)
+
+**Phase 7** moves CI orchestration from GitHub Actions YAML into **Task recipes**, enabling local reproduction of the exact CI flow.
+
+### Task-based CI tasks
+
+| Task | Description |
+|------|-------------|
+| `task test-integration-ci-mongodb` | MongoDB integration tests with full CI flow (compose start, migrate, test, cleanup) |
+| `task test-integration-ci-pulsar` | Pulsar integration tests with full CI flow |
+| `task test-integration-ci-dispatch` | Dispatch saga tests with full CI flow |
+| `task test-integration-ci-http` | HTTP handler tests with full CI flow |
+| `task test-integration-ci-cli` | jobs-cli tests with full CI flow |
+| `task test-e2e-ci` | E2E tests with full stack CI flow |
+
+### Example: Run mongodb CI flow locally
+
+```bash
+# Exact same flow as GitHub Actions integration-mongodb job
+task test-integration-ci-mongodb
+```
+
+This will:
+1. Start compose services (`mongodb`, `mongo-init`, `migrate`) via **`ci-start-compose-services.sh`**
+2. Build and run migrate (conditionally, if "migrate" in service list)
+3. Run tests with **`INTEGRATION_TESTS=true TEST_CATEGORY=mongodb`**
+4. Collect logs to **`ci-compose.log`** (on success or failure)
+5. Clean up with **`docker compose down -v`**
+
+### Logs
+
+On both success and failure, compose logs are written to **`ci-compose.log`** in the workspace root before cleanup. In CI, this file is uploaded as an artifact on failure.
+
+### Benefits
+
+- **Local/CI parity**: Run the exact CI flow on your machine for debugging
+- **Fast iteration**: No need to push to GitHub to test CI changes
+- **Single source of truth**: All orchestration logic lives in **`taskfiles/integration/Taskfile.yml`**, not scattered across workflow YAML
+- **Easy to change**: Update compose startup, healthchecks, or teardown in one place (Taskfile)
+
 ### Pre-tests job
 
 1. **`actions/checkout`** on **`ubuntu-latest`**
