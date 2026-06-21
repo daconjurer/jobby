@@ -1,0 +1,70 @@
+name: e2e-tests
+
+on:
+  workflow_call:
+    secrets:
+      DOCKER_USERNAME:
+        required: true
+      DOCKER_PASSWORD:
+        required: true
+  workflow_dispatch:
+
+env:
+  E2E_COMPOSE_SERVICES: mongodb mongo-init migrate pulsar jobs-server jobs-dispatcher jobs-executor
+  E2E_INFRA_SERVICES: mongodb mongo-init migrate pulsar
+  E2E_APP_SERVICES: jobs-server jobs-dispatcher jobs-executor
+
+jobs:
+  e2e:
+    name: e2e-tests
+    runs-on: ubuntu-latest
+    environment: base
+    env:
+      GOFLAGS: -buildvcs=false
+      INTEGRATION_TESTS: "true"
+      TEST_CATEGORY: e2e
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up E2E job
+        uses: ./.github/actions/integration-setup
+        with:
+          docker_username: ${{ secrets.DOCKER_USERNAME }}
+          docker_password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Start infra Compose services
+        run: ./scripts/ci-start-compose-services.sh "${{ env.E2E_INFRA_SERVICES }}"
+
+      - name: Build migrate image
+        uses: ./.github/actions/build-migrate
+
+      - name: Run migrate
+        run: docker compose up --exit-code-from migrate --abort-on-container-exit migrate
+
+      - name: Build and start app services
+        run: docker compose up -d --build ${{ env.E2E_APP_SERVICES }}
+
+      - name: Wait for full stack
+        run: ./scripts/compose-wait-full.sh
+
+      - name: Collect Compose logs on failure
+        if: failure()
+        run: |
+          docker compose logs ${{ env.E2E_COMPOSE_SERVICES }} | tee compose-failure.log
+
+      - name: Upload Compose logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-compose-logs
+          path: compose-failure.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Run E2E tests
+        run: task test-e2e
+
+      - name: Stop services
+        if: always()
+        run: docker compose down -v

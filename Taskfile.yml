@@ -195,6 +195,11 @@ tasks:
       - task: mongo-replica-key
       - docker compose up -d
 
+  compose-wait-full:
+    desc: Wait for full Compose stack readiness (Mongo, Pulsar, jobs-server HTTP health)
+    cmds:
+      - ./scripts/compose-wait-full.sh
+
   docker-down:
     cmds:
       - docker compose down

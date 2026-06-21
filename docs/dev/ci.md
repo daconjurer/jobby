@@ -15,8 +15,9 @@ The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, t
    - **`integration-http`**
    - **`integration-pulsar`**
    - **`integration-dispatch`**
+4. **`e2e-tests`** — runs in parallel with integration jobs after **`unit-tests`** succeeds; starts the full Compose stack and runs **`task test-e2e`**
 
-Integration jobs call the reusable **[`integration-tests.yaml`](../../.github/workflows/integration-tests.yaml)** workflow (runner Docker + Compose).
+Integration jobs call the reusable **[`integration-tests.yaml`](../../.github/workflows/integration-tests.yaml)** workflow (runner Docker + Compose). The E2E job calls **[`e2e-tests.yaml`](../../.github/workflows/e2e-tests.yaml)**.
 
 Integration jobs are **validated in CI** (2026-06-21): all five categories pass; full pipeline soak ≥3 consecutive green runs; slowest job (`integration-dispatch`) completes in under 4 minutes.
 
@@ -134,6 +135,33 @@ integration-dispatch:
 ```
 
 Runs **`task test-integration-dispatch`** (`./internal/jobs/integrationtest/...`). Requires Mongo bootstrap and Pulsar. App services (`jobs-server`, `jobs-dispatcher`, `jobs-executor`) are not started — tests use in-process dispatch/executor harnesses.
+
+### E2E test job
+
+Wired from **`ci.yaml`** as:
+
+```yaml
+e2e-tests:
+  needs: unit-tests
+  uses: ./.github/workflows/e2e-tests.yaml
+```
+
+Runs **`task test-e2e`** (`TestE2EIntegration_*` in `./internal/jobs/executor/...`) against a live stack. Tests are black-box: only **`JOBS_API_BASE_URL`** (default **`http://localhost:3001`**) and infra health from outside the containers.
+
+**Startup sequence** (in **[`e2e-tests.yaml`](../../.github/workflows/e2e-tests.yaml)**):
+
+1. **`actions/checkout`**
+2. **[`.github/actions/integration-setup/`](../../.github/actions/integration-setup)** — Docker login, Go, pinned Task install, **`.env`** prep
+3. **`scripts/ci-start-compose-services.sh`** — start **`mongodb`**, **`mongo-init`**, **`pulsar`** (background + wait)
+4. **[`.github/actions/build-migrate/`](../../.github/actions/build-migrate)** — BuildKit layer cache, then run **`migrate`** in the foreground
+5. **`docker compose up -d --build`** — build and start **`jobs-server`**, **`jobs-dispatcher`**, **`jobs-executor`**
+6. **`scripts/compose-wait-full.sh`** — poll Mongo/Pulsar/jobs-server healthchecks and **`http://localhost:3001/health`**
+7. **`task test-e2e`** with **`INTEGRATION_TESTS=true`** and **`TEST_CATEGORY=e2e`**
+8. **`docker compose down -v`** (always, even on failure)
+
+On failure, **`docker compose logs`** for all E2E services is printed to the job log and uploaded as an Actions artifact (**`e2e-compose-logs`**).
+
+**Manual re-run:** open the **`e2e-tests`** workflow in Actions and use **Run workflow** (**`workflow_dispatch`**).
 
 ### Go / Docker note
 
