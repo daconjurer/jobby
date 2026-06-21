@@ -1,37 +1,22 @@
-name: integration-tests
+name: e2e-tests
 
 on:
   workflow_call:
-    inputs:
-      category:
-        required: true
-        type: string
-      compose_services:
-        required: false
-        type: string
-        default: ""
-        description: Space-separated Compose services (e.g. "mongodb mongo-init migrate")
     secrets:
       DOCKER_USERNAME:
         required: true
       DOCKER_PASSWORD:
         required: true
   workflow_dispatch:
-    inputs:
-      category:
-        required: true
-        type: choice
-        description: Integration test category to run
-        options:
-          - mongodb
-          - pulsar
-          - dispatch
-          - http
-          - cli
+
+env:
+  E2E_COMPOSE_SERVICES: mongodb mongo-init migrate pulsar jobs-server jobs-dispatcher jobs-executor
+  E2E_INFRA_SERVICES: mongodb mongo-init migrate pulsar
+  E2E_APP_SERVICES: jobs-server jobs-dispatcher jobs-executor
 
 jobs:
-  integration:
-    name: integration-${{ inputs.category }}
+  e2e:
+    name: e2e-tests
     runs-on: ubuntu-latest
     environment: base
     env:
@@ -40,20 +25,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up integration job
+      - name: Set up E2E job
         uses: ./.github/actions/integration-setup
         with:
           docker_username: ${{ secrets.DOCKER_USERNAME }}
           docker_password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Run integration tests (task-based orchestration)
-        run: task test-integration-ci-${{ inputs.category }}
+      - name: Run E2E tests (task-based orchestration)
+        run: task test-e2e-ci
 
       - name: Upload Compose logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: integration-${{ inputs.category }}-logs
+          name: e2e-logs
           path: ci-compose.log
           if-no-files-found: ignore
           retention-days: 7
