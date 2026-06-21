@@ -1,6 +1,5 @@
 [
   {
-    "comment": "Step 1: Backfill type on existing errors entries (dispatch_failed → dispatch, otherwise execution)",
     "update": "job_metadata",
     "updates": [
       {
@@ -43,7 +42,6 @@
     ]
   },
   {
-    "comment": "Step 2: Require type on errors[] items (execution | dispatch)",
     "collMod": "job_metadata",
     "validator": {
       "$jsonSchema": {

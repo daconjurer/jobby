@@ -1,6 +1,5 @@
 [
   {
-    "comment": "Step 1: Restore validator from migration 004 (type not required on errors items)",
     "collMod": "job_metadata",
     "validator": {
       "$jsonSchema": {
@@ -102,7 +101,6 @@
     "validationAction": "error"
   },
   {
-    "comment": "Step 2: Remove type from all errors entries",
     "update": "job_metadata",
     "updates": [
       {

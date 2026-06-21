@@ -1,0 +1,38 @@
+name: Build migrate image
+description: Build jobby-migrate with BuildKit local layer cache for CI
+runs:
+  using: composite
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Cache migrate build layers
+      uses: actions/cache@v4
+      with:
+        path: /tmp/.buildx-cache-migrate
+        key: migrate-${{ runner.os }}-${{ hashFiles('Dockerfile.migrate', 'go.mod', 'go.sum', 'cmd/migrate/**', 'migrations/**') }}
+        restore-keys: |
+          migrate-${{ runner.os }}-
+
+    - name: Build migrate image
+      shell: bash
+      run: |
+        set -euo pipefail
+        cache_dir=/tmp/.buildx-cache-migrate
+        cache_to="${cache_dir}-new"
+
+        build_args=(
+          buildx build
+          --file Dockerfile.migrate
+          --tag jobby-migrate
+          --load
+          --cache-to "type=local,dest=${cache_to},mode=max"
+        )
+
+        if [ -d "$cache_dir" ] && [ -n "$(ls -A "$cache_dir" 2>/dev/null)" ]; then
+          build_args+=(--cache-from "type=local,src=${cache_dir}")
+        fi
+
+        docker "${build_args[@]}" .
+        rm -rf "$cache_dir"
+        mv "$cache_to" "$cache_dir"

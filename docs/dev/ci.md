@@ -5,10 +5,20 @@ Workflows live under **[`.github/workflows/`](../../.github/workflows)**.
 
 ## CI Jobs
 
-The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, triggering these parallel jobs:
+The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, triggering these jobs in order:
 
-- **`pre-tests`** — format and lint checks
-- **`unit-tests`** — unit test execution
+1. **`pre-tests`** — format and lint checks
+2. **`unit-tests`** — unit test execution (runs only if **`pre-tests`** succeeds)
+3. **Integration jobs** — run in parallel with each other, but only if **`unit-tests`** succeeds:
+   - **`integration-mongodb`**
+   - **`integration-cli`**
+   - **`integration-http`**
+   - **`integration-pulsar`**
+   - **`integration-dispatch`**
+
+Integration jobs call the reusable **[`integration-tests.yaml`](../../.github/workflows/integration-tests.yaml)** workflow (runner Docker + Compose).
+
+Integration jobs are **validated in CI** (2026-06-21): all five categories pass; full pipeline soak ≥3 consecutive green runs; slowest job (`integration-dispatch`) completes in under 4 minutes.
 
 ### Pre-tests job
 
@@ -23,6 +33,107 @@ The **`ci`** workflow runs on **`pull_request`** and **`push`** to **`main`**, t
 3. Composite action **[`.github/actions/unit-test/`](../../.github/actions/unit-test)** runs **`task test`** inside the CI container.
 
 The unit-tests job runs **`task test`** (`go test ./...` without **`INTEGRATION_TESTS`**). Integration-tagged tests skip at runtime; only unit tests execute (fast, no infrastructure dependencies). Integration jobs (Phase 5) call category tasks such as **`task test-integration-mongodb`**, which set **`INTEGRATION_TESTS=true`** internally.
+
+### Integration test jobs
+
+Category integration jobs call **[`.github/workflows/integration-tests.yaml`](../../.github/workflows/integration-tests.yaml)** with inputs:
+
+| Input | Purpose |
+|-------|---------|
+| **`category`** | Test category (`mongodb`, `pulsar`, …) — sets **`TEST_CATEGORY`** and runs **`task test-integration-<category>`** |
+| **`compose_services`** | Space-separated Compose services to start for that category |
+
+Each job runs on the **GitHub runner** using the runner's built-in Docker daemon (not Docker-in-Docker). Tests hit published ports on **`localhost`** (e.g. **`27018`** for MongoDB), matching **`.env.example`** defaults and local development. Toolchain setup is handled by **[`.github/actions/integration-setup/`](../../.github/actions/integration-setup)** (pinned Task **`v3.49.1`**, cached).
+
+**Startup sequence** (in the reusable workflow):
+
+1. **`actions/checkout`**
+2. Resolve **`compose_services`** (from caller or category defaults when run via **`workflow_dispatch`**)
+3. **[`.github/actions/integration-setup/`](../../.github/actions/integration-setup)** — Docker login, Go, pinned Task install, **`.env`** prep
+4. **`scripts/ci-start-compose-services.sh`** — **`docker compose pull`**, **`up -d`**, and wait for background services
+5. If **`migrate`** is listed: **[`.github/actions/build-migrate/`](../../.github/actions/build-migrate)** (BuildKit layer cache), then run migrate in the foreground
+6. **`task test-integration-<category>`** with **`INTEGRATION_TESTS=true`**
+7. **`docker compose down -v`** (always, even on failure)
+
+On failure, **`docker compose logs`** is printed to the job log and uploaded as an Actions artifact (**`integration-<category>-compose-logs`**).
+
+**Manual re-run:** open the **`integration-tests`** workflow in Actions and use **Run workflow** (**`workflow_dispatch`**) with a single **`category`** input (Compose services are derived automatically).
+
+#### integration-mongodb
+
+Wired from **`ci.yaml`** as:
+
+```yaml
+integration-mongodb:
+  uses: ./.github/workflows/integration-tests.yaml
+  with:
+    category: mongodb
+    compose_services: mongodb mongo-init migrate
+```
+
+**Service dependencies:**
+
+- **`mongodb`** — MongoDB 8.0 replica set with healthcheck
+- **`mongo-init`** — initializes replica set (one-shot with **`restart: on-failure`**)
+- **`migrate`** — runs schema migrations (one-shot with **`restart: "no"`**)
+
+The wait script polls until **`mongodb`** is healthy and **`mongo-init`** exits successfully; migrate exit code is checked by Compose directly when run in the foreground.
+
+#### integration-cli
+
+Wired from **`ci.yaml`** as:
+
+```yaml
+integration-cli:
+  uses: ./.github/workflows/integration-tests.yaml
+  with:
+    category: cli
+    compose_services: mongodb mongo-init migrate
+```
+
+Runs **`task test-integration-cli`** (`./cmd/jobs-cli/commands/...`). Requires the same Mongo bootstrap as **`integration-mongodb`**; Pulsar and app services are not started.
+
+#### integration-http
+
+Wired from **`ci.yaml`** as:
+
+```yaml
+integration-http:
+  uses: ./.github/workflows/integration-tests.yaml
+  with:
+    category: http
+    compose_services: mongodb mongo-init migrate
+```
+
+Runs **`task test-integration-http`** (`./internal/jobs/http/...`). Requires the same Mongo bootstrap as **`integration-mongodb`**; Pulsar and app services are not started.
+
+#### integration-pulsar
+
+Wired from **`ci.yaml`** as:
+
+```yaml
+integration-pulsar:
+  uses: ./.github/workflows/integration-tests.yaml
+  with:
+    category: pulsar
+    compose_services: pulsar
+```
+
+Runs **`task test-integration-pulsar`** (`./internal/jobs/pulsar/...`). Starts only the **`pulsar`** broker; Mongo and app services are not required.
+
+#### integration-dispatch
+
+Wired from **`ci.yaml`** as:
+
+```yaml
+integration-dispatch:
+  uses: ./.github/workflows/integration-tests.yaml
+  with:
+    category: dispatch
+    compose_services: mongodb mongo-init migrate pulsar
+```
+
+Runs **`task test-integration-dispatch`** (`./internal/jobs/integrationtest/...`). Requires Mongo bootstrap and Pulsar. App services (`jobs-server`, `jobs-dispatcher`, `jobs-executor`) are not started — tests use in-process dispatch/executor harnesses.
 
 ### Go / Docker note
 

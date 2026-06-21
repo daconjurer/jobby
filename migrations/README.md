@@ -2,7 +2,7 @@
 
 Migration files pair **numbered** prefixes with **`{up|down}.json`** suffixes, for example `001_initialize_database.up.json`.
 
-Each `.json` file is a single **JSON array** of MongoDB server commands executed as **`db.runCommand`** against the **`jobby`** database (because the runner’s **`MONGO_URI`** must name **`jobby`** in the URI path segment). Commands use **canonical Extended JSON**: every key **must be quoted**.
+Each `.json` file is a single **JSON array** of MongoDB server commands executed as **`db.runCommand`** against the **`jobby`** database (because the runner’s **`MONGO_URI`** must name **`jobby`** in the URI path segment). Commands use **canonical Extended JSON**: every key **must be quoted**. Do **not** add `"comment"` keys — golang-migrate passes each array element to `runCommand`, and MongoDB has no `comment` command.
 
 Authoritative docs for this format:
 
