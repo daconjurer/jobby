@@ -70,11 +70,11 @@ func (h *countingEchoJobHandler) Execute(ctx context.Context, jobID string, data
 }
 
 type executorIntegrationHarness struct {
-	dispatch    *dispatchHarness
-	registry    *executor.Registry
-	executorSvc *executor.ExecutorService
-	pulsarClient *jobpulsar.PulsarClient
-	consumer    *jobpulsar.PulsarJobConsumer
+	dispatch       *dispatchHarness
+	registry       *executor.Registry
+	executorSvc    *executor.ExecutorService
+	pulsarClient   *jobpulsar.PulsarClient
+	consumer       *jobpulsar.PulsarJobConsumer
 	cancelConsumer context.CancelFunc
 }
 

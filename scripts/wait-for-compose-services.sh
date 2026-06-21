@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wait for Docker Compose services to become healthy or complete successfully.
-# Used by CI integration test jobs (Phase 5).
+# Used by CI integration test jobs.
 #
 # Usage:
 #   ./scripts/wait-for-compose-services.sh "mongodb mongo-init migrate" [timeout_seconds] [interval_seconds]

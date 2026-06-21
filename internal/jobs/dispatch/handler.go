@@ -10,7 +10,7 @@ type DispatchHandlerConfig struct {
 	MaxAttempts int
 }
 
-// DispatchHandler runs phases 2–3 of the dispatch saga for a single job.
+// DispatchHandler runs the publish and confirm steps of the dispatch saga for a single job.
 type DispatchHandler struct {
 	cfg       DispatchHandlerConfig
 	publisher JobDispatchPublisher
@@ -22,7 +22,7 @@ func NewDispatchHandler(cfg DispatchHandlerConfig, publisher JobDispatchPublishe
 	return &DispatchHandler{cfg: cfg, publisher: publisher, jobs: jobs}
 }
 
-// HandleDispatch runs saga phases 2–3 per docs/architecture/job-saga.md:
+// HandleDispatch runs the publish and confirm steps per docs/architecture/job-saga.md:
 // publish via JobPublisher, then MarkJobDispatched, RecordDispatchAttempt, or MarkJobDispatchFailed.
 // Idempotent when the job is already dispatched.
 func (h *DispatchHandler) HandleDispatch(ctx context.Context, job JobDispatchProjection) error {
