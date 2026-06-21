@@ -39,9 +39,6 @@ jobs:
       INTEGRATION_TESTS: "true"
       TEST_CATEGORY: ${{ inputs.category }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Resolve Compose services
         id: compose
         shell: bash
@@ -60,54 +57,30 @@ jobs:
             esac
           fi
           echo "services=$services" >> "$GITHUB_OUTPUT"
+          if [[ " $services " == *" migrate "* ]]; then
+            echo "has_migrate=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_migrate=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Install Task
-        uses: ./.github/actions/install-task
-
-      - name: Prepare environment
-        run: |
-          cp .env.example .env
-          task mongo-replica-key
+      - name: Set up integration job
+        uses: ./.github/actions/integration-setup
+        secrets:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Start Compose services
         env:
           COMPOSE_SERVICES: ${{ steps.compose.outputs.services }}
-        run: |
-          set -euo pipefail
-          background=""
-          wait_services=""
-          has_migrate=false
-          for service in $COMPOSE_SERVICES; do
-            if [ "$service" = "migrate" ]; then
-              has_migrate=true
-            else
-              background="${background:+$background }$service"
-              wait_services="${wait_services:+$wait_services }$service"
-            fi
-          done
-          if [ -z "$background" ]; then
-            echo "compose_services must include at least one non-migrate service" >&2
-            exit 1
-          fi
-          docker compose pull $background
-          docker compose up -d $background
-          ./scripts/wait-for-compose-services.sh "$wait_services"
-          if $has_migrate; then
-            docker compose build migrate
-            docker compose up --exit-code-from migrate --abort-on-container-exit migrate
-          fi
+        run: ./scripts/ci-start-compose-services.sh "$COMPOSE_SERVICES"
+
+      - name: Build migrate image
+        if: steps.compose.outputs.has_migrate == 'true'
+        uses: ./.github/actions/build-migrate
+
+      - name: Run migrate
+        if: steps.compose.outputs.has_migrate == 'true'
+        run: docker compose up --exit-code-from migrate --abort-on-container-exit migrate
 
       - name: Collect Compose logs on failure
         if: failure()

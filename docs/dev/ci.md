@@ -43,17 +43,16 @@ Category integration jobs call **[`.github/workflows/integration-tests.yaml`](..
 | **`category`** | Test category (`mongodb`, `pulsar`, …) — sets **`TEST_CATEGORY`** and runs **`task test-integration-<category>`** |
 | **`compose_services`** | Space-separated Compose services to start for that category |
 
-Each job runs on the **GitHub runner** using the runner's built-in Docker daemon (not Docker-in-Docker). Tests hit published ports on **`localhost`** (e.g. **`27018`** for MongoDB), matching **`.env.example`** defaults and local development. Each job installs Task via **[`.github/actions/install-task/`](../../.github/actions/install-task)** (pinned **`v3.49.1`** release tarball, cached) after **`actions/setup-go`**.
+Each job runs on the **GitHub runner** using the runner's built-in Docker daemon (not Docker-in-Docker). Tests hit published ports on **`localhost`** (e.g. **`27018`** for MongoDB), matching **`.env.example`** defaults and local development. Toolchain setup is handled by **[`.github/actions/integration-setup/`](../../.github/actions/integration-setup)** (pinned Task **`v3.49.1`**, cached).
 
 **Startup sequence** (in the reusable workflow):
 
 1. Resolve **`compose_services`** (from caller or category defaults when run via **`workflow_dispatch`**)
-2. Copy **`.env.example`** → **`.env`** and run **`task mongo-replica-key`**
-3. **`docker compose pull`** then **`docker compose up -d`** for all services except **`migrate`**
-4. **`scripts/wait-for-compose-services.sh`** until background services are healthy or one-shot containers exit 0
-5. If **`migrate`** is listed: **`docker compose build migrate`**, then run migrate in the foreground
-6. **`task test-integration-<category>`** with **`INTEGRATION_TESTS=true`**
-7. **`docker compose down -v`** (always, even on failure)
+2. **[`.github/actions/integration-setup/`](../../.github/actions/integration-setup)** — checkout, Docker login, Go, pinned Task install, **`.env`** prep
+3. **`scripts/ci-start-compose-services.sh`** — **`docker compose pull`**, **`up -d`**, and wait for background services
+4. If **`migrate`** is listed: **[`.github/actions/build-migrate/`](../../.github/actions/build-migrate)** (BuildKit layer cache), then run migrate in the foreground
+5. **`task test-integration-<category>`** with **`INTEGRATION_TESTS=true`**
+6. **`docker compose down -v`** (always, even on failure)
 
 On failure, **`docker compose logs`** is printed to the job log and uploaded as an Actions artifact (**`integration-<category>-compose-logs`**).
 
