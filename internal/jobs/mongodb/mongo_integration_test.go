@@ -537,7 +537,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		j.StartedAt = &t0
 		j.CompletedAt = &t1
 		j.Status = metadata.JobStatusFailed
-		j.Errors = []metadata.JobError{{RetryAttempt: 0, Error: "boom", Timestamp: t1}}
+		j.Errors = []metadata.JobError{{Type: metadata.JobErrorTypeExecution, RetryAttempt: 0, Error: "boom", Timestamp: t1}}
 		if err := writer.Create(ctx, j); err != nil {
 			t.Fatal(err)
 		}

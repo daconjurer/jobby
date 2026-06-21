@@ -101,7 +101,6 @@
     "validationAction": "error"
   },
   {
-    "comment": "Step 2: Migrate existing error field to errors array",
     "update": "job_metadata",
     "updates": [
       {
@@ -131,7 +130,6 @@
     ]
   },
   {
-    "comment": "Step 3: Remove legacy error field from all remaining documents",
     "update": "job_metadata",
     "updates": [
       {
