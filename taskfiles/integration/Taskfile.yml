@@ -108,6 +108,11 @@ tasks:
           CATEGORY: cli
           SERVICES: mongodb mongo-init migrate
 
+  test-e2e-ci:
+    desc: E2E CI flow (full stack; matches GitHub Actions; local reproduction)
+    cmds:
+      - task: ci-e2e-run
+
   ci-integration-run:
     internal: true
     dotenv:
@@ -126,6 +131,19 @@ tasks:
       - docker compose up --exit-code-from migrate --abort-on-container-exit migrate
     status:
       - '! echo "{{.SERVICES}}" | grep -q migrate'
+
+  ci-e2e-run:
+    internal: true
+    dotenv:
+      - .env
+    cmds:
+      - ./scripts/ci-start-compose-services.sh "mongodb mongo-init migrate pulsar"
+      - defer: { task: ci-cleanup }
+      - task: migrate-build
+      - docker compose up --exit-code-from migrate --abort-on-container-exit migrate
+      - docker compose up -d --build jobs-server jobs-dispatcher jobs-executor
+      - ./scripts/compose-wait-full.sh
+      - env INTEGRATION_TESTS=true TEST_CATEGORY=e2e task test-integration-category
 
   ci-cleanup:
     internal: true

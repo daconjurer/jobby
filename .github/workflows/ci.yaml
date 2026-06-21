@@ -70,10 +70,9 @@ jobs:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
-  # Phase 7 Iteration 3: E2E will be migrated to task-based approach after integration jobs are validated
-  # e2e-tests:
-  #   needs: unit-tests
-  #   uses: ./.github/workflows/e2e-tests.yaml
-  #   secrets:
-  #     DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-  #     DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  e2e-tests:
+    needs: unit-tests
+    uses: ./.github/workflows/e2e-tests.yaml
+    secrets:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}

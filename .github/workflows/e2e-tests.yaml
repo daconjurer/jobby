@@ -21,8 +21,6 @@ jobs:
     environment: base
     env:
       GOFLAGS: -buildvcs=false
-      INTEGRATION_TESTS: "true"
-      TEST_CATEGORY: e2e
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,38 +31,18 @@ jobs:
           docker_username: ${{ secrets.DOCKER_USERNAME }}
           docker_password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Start infra Compose services
-        run: ./scripts/ci-start-compose-services.sh "${{ env.E2E_INFRA_SERVICES }}"
-
-      - name: Build migrate image
-        uses: ./.github/actions/build-migrate
-
-      - name: Run migrate
-        run: docker compose up --exit-code-from migrate --abort-on-container-exit migrate
-
-      - name: Build and start app services
-        run: docker compose up -d --build ${{ env.E2E_APP_SERVICES }}
-
-      - name: Wait for full stack
-        run: ./scripts/compose-wait-full.sh
-
-      - name: Collect Compose logs on failure
-        if: failure()
-        run: |
-          docker compose logs ${{ env.E2E_COMPOSE_SERVICES }} | tee compose-failure.log
+      - name: Run E2E tests (task-based orchestration)
+        run: task test-e2e-ci
 
       - name: Upload Compose logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-compose-logs
-          path: compose-failure.log
+          name: e2e-logs
+          path: ci-compose.log
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Run E2E tests
-        run: task test-e2e
-
-      - name: Stop services
+      - name: Safety cleanup
         if: always()
-        run: docker compose down -v
+        run: docker compose down -v || true

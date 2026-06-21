@@ -31,10 +31,10 @@ Integration jobs are **validated in CI** (2026-06-21): all five categories pass;
 |------|-------------|
 | `task test-integration-ci-mongodb` | MongoDB integration tests with full CI flow (compose start, migrate, test, cleanup) |
 | `task test-integration-ci-pulsar` | Pulsar integration tests with full CI flow |
-| `task test-integration-ci-dispatch` | Dispatch saga tests with full CI flow |
+| `task test-integration-ci-dispatch` | Dispatch saga tests with full CI flow (mongodb + pulsar) |
 | `task test-integration-ci-http` | HTTP handler tests with full CI flow |
 | `task test-integration-ci-cli` | jobs-cli tests with full CI flow |
-| `task test-e2e-ci` | E2E tests with full stack CI flow |
+| `task test-e2e-ci` | **E2E tests with full stack CI flow** (infra + app services + compose-wait-full) |
 
 ### Example: Run mongodb CI flow locally
 
@@ -49,6 +49,22 @@ This will:
 3. Run tests with **`INTEGRATION_TESTS=true TEST_CATEGORY=mongodb`**
 4. Collect logs to **`ci-compose.log`** (on success or failure)
 5. Clean up with **`docker compose down -v`**
+
+### Example: Run E2E CI flow locally
+
+```bash
+# Exact same flow as GitHub Actions e2e-tests job
+task test-e2e-ci
+```
+
+This will:
+1. Start infra services (`mongodb`, `mongo-init`, `migrate`, `pulsar`) via **`ci-start-compose-services.sh`**
+2. Build and run migrate
+3. Build and start app services (`jobs-server`, `jobs-dispatcher`, `jobs-executor`)
+4. Wait for full stack readiness via **`compose-wait-full.sh`** (healthchecks + HTTP `/health`)
+5. Run E2E tests with **`INTEGRATION_TESTS=true TEST_CATEGORY=e2e`**
+6. Collect logs to **`ci-compose.log`**
+7. Clean up with **`docker compose down -v`**
 
 ### Logs
 
@@ -81,22 +97,26 @@ Category integration jobs call **[`.github/workflows/integration-tests.yaml`](..
 
 | Input | Purpose |
 |-------|---------|
-| **`category`** | Test category (`mongodb`, `pulsar`, …) — sets **`TEST_CATEGORY`** and runs **`task test-integration-<category>`** |
-| **`compose_services`** | Space-separated Compose services to start for that category |
+| **`category`** | Test category (`mongodb`, `pulsar`, …) — runs **`task test-integration-ci-<category>`** |
+| **`compose_services`** | (Legacy input, unused in Phase 7 task-based approach) |
 
 Each job runs on the **GitHub runner** using the runner's built-in Docker daemon (not Docker-in-Docker). Tests hit published ports on **`localhost`** (e.g. **`27018`** for MongoDB), matching **`.env.example`** defaults and local development. Toolchain setup is handled by **[`.github/actions/integration-setup/`](../../.github/actions/integration-setup)** (pinned Task **`v3.49.1`**, cached).
 
-**Startup sequence** (in the reusable workflow):
+**Startup sequence** (Phase 7 task-based orchestration):
 
 1. **`actions/checkout`**
-2. Resolve **`compose_services`** (from caller or category defaults when run via **`workflow_dispatch`**)
-3. **[`.github/actions/integration-setup/`](../../.github/actions/integration-setup)** — Docker login, Go, pinned Task install, **`.env`** prep
-4. **`scripts/ci-start-compose-services.sh`** — **`docker compose pull`**, **`up -d`**, and wait for background services
-5. If **`migrate`** is listed: **[`.github/actions/build-migrate/`](../../.github/actions/build-migrate)** (BuildKit layer cache), then run migrate in the foreground
-6. **`task test-integration-<category>`** with **`INTEGRATION_TESTS=true`**
-7. **`docker compose down -v`** (always, even on failure)
+2. **[`.github/actions/integration-setup/`](../../.github/actions/integration-setup)** — Docker login, Go, pinned Task install, **`.env`** prep
+3. **`task test-integration-ci-<category>`** — orchestrates full flow (compose start, migrate, test, log collection, cleanup)
+4. Safety cleanup: **`docker compose down -v`** (if Task failed early)
 
-On failure, **`docker compose logs`** is printed to the job log and uploaded as an Actions artifact (**`integration-<category>-compose-logs`**).
+On failure, **`ci-compose.log`** is uploaded as an Actions artifact (**`integration-<category>-logs`**).
+
+**Task internal flow** (example for mongodb):
+
+1. **`scripts/ci-start-compose-services.sh "mongodb mongo-init migrate"`** — pull, up, wait
+2. **`task migrate-build`** + **`docker compose up migrate`** (conditional, via `ci-migrate-if-needed`)
+3. **`INTEGRATION_TESTS=true TEST_CATEGORY=mongodb task test-integration-category`**
+4. **`docker compose logs > ci-compose.log`** + **`docker compose down -v`** (via `ci-cleanup` with `defer`)
 
 **Manual re-run:** open the **`integration-tests`** workflow in Actions and use **Run workflow** (**`workflow_dispatch`**) with a single **`category`** input (Compose services are derived automatically).
 
