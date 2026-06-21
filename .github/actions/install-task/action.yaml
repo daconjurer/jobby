@@ -39,4 +39,4 @@ runs:
           chmod +x "$task_dir/task"
         fi
         echo "$task_dir" >> "$GITHUB_PATH"
-        task --version
+        "$task_dir/task" --version
