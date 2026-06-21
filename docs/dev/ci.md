@@ -47,12 +47,13 @@ Each job runs on the **GitHub runner** using the runner's built-in Docker daemon
 
 **Startup sequence** (in the reusable workflow):
 
-1. Resolve **`compose_services`** (from caller or category defaults when run via **`workflow_dispatch`**)
-2. **[`.github/actions/integration-setup/`](../../.github/actions/integration-setup)** — checkout, Docker login, Go, pinned Task install, **`.env`** prep
-3. **`scripts/ci-start-compose-services.sh`** — **`docker compose pull`**, **`up -d`**, and wait for background services
-4. If **`migrate`** is listed: **[`.github/actions/build-migrate/`](../../.github/actions/build-migrate)** (BuildKit layer cache), then run migrate in the foreground
-5. **`task test-integration-<category>`** with **`INTEGRATION_TESTS=true`**
-6. **`docker compose down -v`** (always, even on failure)
+1. **`actions/checkout`**
+2. Resolve **`compose_services`** (from caller or category defaults when run via **`workflow_dispatch`**)
+3. **[`.github/actions/integration-setup/`](../../.github/actions/integration-setup)** — Docker login, Go, pinned Task install, **`.env`** prep
+4. **`scripts/ci-start-compose-services.sh`** — **`docker compose pull`**, **`up -d`**, and wait for background services
+5. If **`migrate`** is listed: **[`.github/actions/build-migrate/`](../../.github/actions/build-migrate)** (BuildKit layer cache), then run migrate in the foreground
+6. **`task test-integration-<category>`** with **`INTEGRATION_TESTS=true`**
+7. **`docker compose down -v`** (always, even on failure)
 
 On failure, **`docker compose logs`** is printed to the job log and uploaded as an Actions artifact (**`integration-<category>-compose-logs`**).
 

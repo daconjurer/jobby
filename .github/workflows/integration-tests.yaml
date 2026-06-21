@@ -39,6 +39,9 @@ jobs:
       INTEGRATION_TESTS: "true"
       TEST_CATEGORY: ${{ inputs.category }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Resolve Compose services
         id: compose
         shell: bash
