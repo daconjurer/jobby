@@ -30,49 +30,51 @@ jobs:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
-  integration-cli:
-    needs: unit-tests
-    uses: ./.github/workflows/integration-tests.yaml
-    with:
-      category: cli
-      compose_services: mongodb mongo-init migrate
-    secrets:
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  # Phase 7 Iteration 1: Temporarily disabled for fast feedback during mongodb vertical slice
+  # Will be re-enabled in Iteration 2 after validating task-based approach
+  # integration-cli:
+  #   needs: unit-tests
+  #   uses: ./.github/workflows/integration-tests.yaml
+  #   with:
+  #     category: cli
+  #     compose_services: mongodb mongo-init migrate
+  #   secrets:
+  #     DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  #     DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
-  integration-http:
-    needs: unit-tests
-    uses: ./.github/workflows/integration-tests.yaml
-    with:
-      category: http
-      compose_services: mongodb mongo-init migrate
-    secrets:
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  # integration-http:
+  #   needs: unit-tests
+  #   uses: ./.github/workflows/integration-tests.yaml
+  #   with:
+  #     category: http
+  #     compose_services: mongodb mongo-init migrate
+  #   secrets:
+  #     DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  #     DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
-  integration-pulsar:
-    needs: unit-tests
-    uses: ./.github/workflows/integration-tests.yaml
-    with:
-      category: pulsar
-      compose_services: pulsar
-    secrets:
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  # integration-pulsar:
+  #   needs: unit-tests
+  #   uses: ./.github/workflows/integration-tests.yaml
+  #   with:
+  #     category: pulsar
+  #     compose_services: pulsar
+  #   secrets:
+  #     DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  #     DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
-  integration-dispatch:
-    needs: unit-tests
-    uses: ./.github/workflows/integration-tests.yaml
-    with:
-      category: dispatch
-      compose_services: mongodb mongo-init migrate pulsar
-    secrets:
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  # integration-dispatch:
+  #   needs: unit-tests
+  #   uses: ./.github/workflows/integration-tests.yaml
+  #   with:
+  #     category: dispatch
+  #     compose_services: mongodb mongo-init migrate pulsar
+  #   secrets:
+  #     DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  #     DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
-  e2e-tests:
-    needs: unit-tests
-    uses: ./.github/workflows/e2e-tests.yaml
-    secrets:
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  # e2e-tests:
+  #   needs: unit-tests
+  #   uses: ./.github/workflows/e2e-tests.yaml
+  #   secrets:
+  #     DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  #     DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}

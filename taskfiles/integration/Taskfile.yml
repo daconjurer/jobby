@@ -65,3 +65,38 @@ tasks:
     desc: E2E integration tests (full stack); loads .env; needs task docker-up
     cmds:
       - env INTEGRATION_TESTS=true TEST_CATEGORY=e2e task test-integration-category
+
+  # --- CI orchestration tasks (Phase 7) ---
+
+  test-integration-ci-mongodb:
+    desc: Integration CI flow for mongodb category (matches GitHub Actions; local reproduction)
+    cmds:
+      - task: ci-integration-run
+        vars:
+          CATEGORY: mongodb
+          SERVICES: mongodb mongo-init migrate
+
+  ci-integration-run:
+    internal: true
+    dotenv:
+      - .env
+    cmds:
+      - ./scripts/ci-start-compose-services.sh "{{.SERVICES}}"
+      - defer: { task: ci-cleanup }
+      - task: ci-migrate-if-needed
+        vars: { SERVICES: "{{.SERVICES}}" }
+      - env INTEGRATION_TESTS=true TEST_CATEGORY={{.CATEGORY}} task test-integration-category
+
+  ci-migrate-if-needed:
+    internal: true
+    cmds:
+      - task: migrate-build
+      - docker compose up --exit-code-from migrate --abort-on-container-exit migrate
+    status:
+      - '! echo "{{.SERVICES}}" | grep -q migrate'
+
+  ci-cleanup:
+    internal: true
+    cmds:
+      - docker compose logs > ci-compose.log 2>&1 || true
+      - docker compose down -v

@@ -36,35 +36,9 @@ jobs:
     environment: base
     env:
       GOFLAGS: -buildvcs=false
-      INTEGRATION_TESTS: "true"
-      TEST_CATEGORY: ${{ inputs.category }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Resolve Compose services
-        id: compose
-        shell: bash
-        run: |
-          set -euo pipefail
-          services="${{ inputs.compose_services }}"
-          if [ -z "$services" ]; then
-            case "${{ inputs.category }}" in
-              mongodb|http|cli) services="mongodb mongo-init migrate" ;;
-              pulsar) services="pulsar" ;;
-              dispatch) services="mongodb mongo-init migrate pulsar" ;;
-              *)
-                echo "unknown category: ${{ inputs.category }}" >&2
-                exit 1
-                ;;
-            esac
-          fi
-          echo "services=$services" >> "$GITHUB_OUTPUT"
-          if [[ " $services " == *" migrate "* ]]; then
-            echo "has_migrate=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_migrate=false" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Set up integration job
         uses: ./.github/actions/integration-setup
@@ -72,38 +46,18 @@ jobs:
           docker_username: ${{ secrets.DOCKER_USERNAME }}
           docker_password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Start Compose services
-        env:
-          COMPOSE_SERVICES: ${{ steps.compose.outputs.services }}
-        run: ./scripts/ci-start-compose-services.sh "$COMPOSE_SERVICES"
-
-      - name: Build migrate image
-        if: steps.compose.outputs.has_migrate == 'true'
-        uses: ./.github/actions/build-migrate
-
-      - name: Run migrate
-        if: steps.compose.outputs.has_migrate == 'true'
-        run: docker compose up --exit-code-from migrate --abort-on-container-exit migrate
-
-      - name: Collect Compose logs on failure
-        if: failure()
-        env:
-          COMPOSE_SERVICES: ${{ steps.compose.outputs.services }}
-        run: |
-          docker compose logs $COMPOSE_SERVICES | tee compose-failure.log
+      - name: Run integration tests (task-based orchestration)
+        run: task test-integration-ci-${{ inputs.category }}
 
       - name: Upload Compose logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: integration-${{ inputs.category }}-compose-logs
-          path: compose-failure.log
+          name: integration-${{ inputs.category }}-logs
+          path: ci-compose.log
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Run integration tests
-        run: task test-integration-${{ inputs.category }}
-
-      - name: Stop services
+      - name: Safety cleanup
         if: always()
-        run: docker compose down -v
+        run: docker compose down -v || true
