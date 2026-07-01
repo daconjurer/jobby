@@ -1,4 +1,4 @@
-# CI orchestration tasks (Phase 7) - included from root Taskfile.yml with flatten: true.
+# CI orchestration tasks — included from root Taskfile.yml with flatten: true.
 # https://taskfile.dev/
 version: "3"
 
