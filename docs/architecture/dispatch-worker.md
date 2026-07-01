@@ -102,7 +102,7 @@ flowchart TB
 | **Resume** | After each successful `Next`, the resume token is persisted (file) or dropped (nop). |
 | **Handler contract** | `StreamWatcher` depends on `dispatch.JobDispatchHandler` — `main` passes `*dispatch.DispatchHandler` as that implementation. |
 
-Replica set is required for change streams (see `docs/dev/setup.md`).
+Replica set is required for change streams (see [Environment](../dev/environment.md)).
 
 ---
 

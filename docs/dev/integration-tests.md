@@ -1,7 +1,7 @@
 Integration tests: services, tasks, and stack tiers
 ===================================================
 
-This document summarizes which Docker Compose services and Task commands are required for integration testing in this repo. It complements **[setup.md](./setup.md)** (local dev).
+This document summarizes which Docker Compose services and Task commands are required for integration testing in this repo. It complements **[Testing](./testing.md)** (overview).
 
 ---
 
@@ -53,7 +53,7 @@ Defined in **[Taskfile.yml](../../Taskfile.yml)**. Integration tasks load **`.en
 | Task | What it runs | Isolation step |
 |------|--------------|----------------|
 | **`task test`** | Unit tests only (`go test ./...`) | None — no Docker required |
-| **`task test-integration`** | All `-tags=integration` tests under `./...` | None built-in |
+| **`task test-integration`** | All integration tests under `./...` (skips unless **`INTEGRATION_TESTS=true`**) | None built-in |
 | **`task test-integration-mongodb`** | `./internal/jobs/mongodb/...` | None built-in |
 | **`task test-integration-cli`** | `./cmd/jobs-cli/commands/...` | None built-in |
 | **`task test-integration-http`** | `./internal/jobs/http/...` | None built-in |
@@ -61,13 +61,7 @@ Defined in **[Taskfile.yml](../../Taskfile.yml)**. Integration tasks load **`.en
 | **`task test-integration-dispatch`** | `./internal/jobs/integrationtest/...` | None built-in (CI does not start app worker containers) |
 | **`task test-integration-executor`** | `./internal/jobs/integrationtest/... -run TestIntegration_Executor` | Stops `jobs-dispatcher`, `jobs-executor`, `jobs-server` before run |
 
-Shared flags for integration tasks (`INTEGRATION_TEST_FLAGS`):
-
-```text
--tags=integration -p 1 -parallel 1 -count=1
-```
-
-Serial execution avoids races when tests share Mongo/Pulsar.
+Integration tasks set **`INTEGRATION_TESTS=true`** and use serial flags (`-p 1 -parallel 1 -count=1`) to avoid races when tests share Mongo/Pulsar.
 
 ### Required environment variables
 
@@ -78,7 +72,7 @@ Serial execution avoids races when tests share Mongo/Pulsar.
 | **`PULSAR_SERVICE_URL`** | Dispatch/executor saga, Pulsar tests | `pulsar://localhost:6650` |
 | **`JOBS_API_BASE_URL`** | E2E only | Default `http://localhost:3001` |
 
-Running `go test -tags=integration ...` without loading `.env` fails with **`MONGODB_URI is not set`**. Use a Task command or export vars explicitly.
+Running `go test ./...` without **`INTEGRATION_TESTS=true`** skips integration tests at runtime. Use a Task command or export **`INTEGRATION_TESTS=true`** and load **`.env`** explicitly.
 
 ---
 
@@ -136,7 +130,7 @@ task test-integration
 
 ```sh
 task docker-up
-go test -tags=integration -p 1 -count=1 -v \
+INTEGRATION_TESTS=true go test -p 1 -count=1 -v \
   ./internal/jobs/executor/... -run TestE2EIntegration
 ```
 
@@ -174,7 +168,7 @@ docker compose start jobs-server jobs-dispatcher jobs-executor
 
 ```sh
 docker compose down -v && task mongo-up
-go test -tags=integration -p 1 -count=1 -v \
+INTEGRATION_TESTS=true go test -p 1 -count=1 -v \
   ./internal/jobs/mongodb/... -run TestIntegration_MongoTerminalWriter
 ```
 
@@ -192,7 +186,7 @@ task test-integration-executor
 ```sh
 task mongo-up && docker compose up -d pulsar
 docker compose stop jobs-dispatcher jobs-executor jobs-server
-go test -tags=integration -p 1 -parallel 1 -count=1 -v \
+INTEGRATION_TESTS=true go test -p 1 -parallel 1 -count=1 -v \
   ./internal/jobs/integrationtest/...
 ```
 
@@ -245,7 +239,7 @@ CI runs this as the **`integration-cli`** job (see **[ci.md](./ci.md)**).
 
 ```sh
 task docker-up
-go test -tags=integration -p 1 -count=1 -v \
+INTEGRATION_TESTS=true go test -p 1 -count=1 -v \
   ./internal/jobs/executor/... -run TestE2EIntegration
 ```
 
@@ -290,7 +284,4 @@ The Task recipe encodes validated isolation in two steps:
 2. **`go test ... -run TestIntegration_Executor`** — fast, focused executor coverage with shared `INTEGRATION_TEST_FLAGS`.
 
 Prerequisites (Mongo + Pulsar) are left to the caller so infra startup stays explicit. Optional future extensions: a `test-integration-executor-fresh` task that runs `docker compose down -v && task mongo-up` first, or a preflight check that `:27018` and `:6650` are reachable.
-
----
-
-*Last updated: 2026-06-20*
+*See [Testing](./testing.md) for the integration test overview.*

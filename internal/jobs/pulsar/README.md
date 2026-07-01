@@ -1,6 +1,6 @@
 # `PulsarClient.CreateConsumer` — design notes
 
-Internal reference for [`internal/jobs/pulsar/client.go`](../../internal/jobs/pulsar/client.go). The executor uses a separate consumer type — [`PulsarJobConsumer`](../../internal/jobs/pulsar/consumer.go) — with explicit `Receive()` loops and ack/nack policy.
+Internal reference for [`client.go`](./client.go). The executor uses a separate consumer type — [`PulsarJobConsumer`](./consumer.go) — with explicit `Receive()` loops and ack/nack policy.
 
 ## What the method does
 
@@ -73,5 +73,5 @@ Use `defer` locally around the append if the guarded region grows (multiple retu
 
 ## See also
 
-- [`PulsarJobConsumer`](../../internal/jobs/pulsar/consumer.go) — executor receive loop, ack/nack, and multi-topic subscription.
+- [`PulsarJobConsumer`](./consumer.go) — executor receive loop, ack/nack, and multi-topic subscription.
 - [Pulsar Go client docs](https://pulsar.apache.org/docs/client-libraries-go-use/) — `Subscribe`, `MessageChannel`, Shared subscriptions.
