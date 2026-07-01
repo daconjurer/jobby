@@ -14,7 +14,7 @@ type PulsarJobPublisher struct {
 
 var _ dispatch.JobDispatchPublisher = (*PulsarJobPublisher)(nil)
 
-// NewDispatchPublisher returns a saga-phase-2 publisher backed by Pulsar.
+// NewDispatchPublisher returns a dispatch-saga publish-step publisher backed by Pulsar.
 func NewDispatchPublisher(producer JobProducer) *PulsarJobPublisher {
 	return &PulsarJobPublisher{producer: producer}
 }

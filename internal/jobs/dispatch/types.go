@@ -16,13 +16,13 @@ type StreamRunner interface {
 	Run(ctx context.Context)
 }
 
-// JobPublisher sends a pending_dispatch job to its target topic (saga phase 2).
+// JobPublisher sends a pending_dispatch job to its target topic (dispatch saga publish step).
 // Implementations own wire format and broker details.
 type JobDispatchPublisher interface {
 	Publish(ctx context.Context, job JobDispatchProjection) error
 }
 
-// JobDispatchHandler runs saga phases 2–3 for a single job dispatch projection.
+// JobDispatchHandler runs the dispatch saga publish and confirm steps for a single job dispatch projection.
 // Implementations must follow docs/architecture/job-saga.md (publish, then confirm status).
 type JobDispatchHandler interface {
 	HandleDispatch(ctx context.Context, jobProjection JobDispatchProjection) error

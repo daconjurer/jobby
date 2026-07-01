@@ -47,7 +47,7 @@ func (c *PulsarClient) CreateProducer(topic string) (pulsar.Producer, error) {
 }
 
 // CreateConsumer subscribes to topic with a Shared subscription and delivers messages to messageHandler.
-// Phase 3 will use the same listener style for the executor receive loop.
+// PulsarJobConsumer uses explicit Receive() loops instead of this MessageChannel pattern.
 func (c *PulsarClient) CreateConsumer(
 	topic string,
 	messageHandler func(pulsar.Consumer, pulsar.Message),

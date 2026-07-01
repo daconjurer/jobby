@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Resolve TEST_CATEGORY → Go package path (Phase 4).
+# Resolve TEST_CATEGORY → Go package path for integration tests.
 # Usage:
 #   ./scripts/integration-category-resolve.sh resolve   # uses TEST_CATEGORY env (default: all)
 #   ./scripts/integration-category-resolve.sh           # smoke test mapping
