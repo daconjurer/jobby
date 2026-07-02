@@ -105,6 +105,12 @@ func TestIntegration_DispatchResumeToken_RestartProcessesMissedJob(t *testing.T)
 		ResumeTokens:   tokens,
 		PendingFetcher: emptyPendingFetcher{},
 	})
+	t.Cleanup(func() {
+		runCancel()
+		_ = runtime.Close()
+	})
+	// Let the change stream cursor open before inserting; poll fallback is disabled here.
+	time.Sleep(200 * time.Millisecond)
 
 	job1Model, err := metadataSvc.CreateJob(ctx, jobName, map[string]any{"n": 1}, service.CreateJobOptions{Topic: wantTopic})
 	if err != nil {
