@@ -2,5 +2,5 @@ name: pre-test
 description: Format and lint Go code via Task (dockerpaps/golang-for-ci)
 runs:
   using: docker
-  image: dockerpaps/golang-for-ci:latest
+  image: dockerpaps/golang-for-ci@sha256:8839e4d4c03a6ac8db8e54d4e3db1f15b071010228c3703754bab24aa0fa2645
   entrypoint: .github/actions/pre-test/run.sh
