@@ -34,6 +34,7 @@ jobs:
     name: integration-${{ inputs.category }}
     runs-on: ubuntu-latest
     environment: base
+    timeout-minutes: 20
     env:
       GOFLAGS: -buildvcs=false
     steps:
