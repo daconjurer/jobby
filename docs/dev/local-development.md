@@ -6,7 +6,7 @@ Choose a workflow based on whether you run services in Docker or as host binarie
 
 | Goal | Command | Mongo URI |
 |------|---------|-----------|
-| Full stack in Docker | `task docker-up` | From `.env` with **`COMPOSE_APP_MONGODB_URI`** override (`mongodb:27017`, `pulsar:6650`) |
+| Full stack in Docker | `task docker-up` | `.env` overridden by `docker/app.env` (`mongodb:27017`, `pulsar:6650`) |
 | API on host | `task mongo-up` then `task run-jobs-server` | **`MONGODB_URI`** from `.env` (`localhost:27018`, `replicaSet=rs0`, `directConnection=true`) |
 | Dispatch on host | `task mongo-up` + Pulsar, then `task run-jobs-dispatcher` | Same Mongo URI; **`PULSAR_SERVICE_URL`** / **`DISPATCH_*`** from `.env` |
 | Executor on host | `task mongo-up` + Pulsar, then `task run-jobs-executor` | Same Mongo URI; **`PULSAR_SERVICE_URL`** / **`JOB_TOPICS_CONFIG_PATH`** from `.env` |
