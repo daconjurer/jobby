@@ -53,7 +53,7 @@ type markDispatchFailedCall struct {
 	errorMsg string
 }
 
-func (w *recordingJobsWriter) Create(context.Context, metadata.JobMetadata) error {
+func (w *recordingJobsWriter) Create(context.Context, *metadata.JobMetadataModel) error {
 	return w.createErr
 }
 
@@ -122,15 +122,15 @@ func (w *recordingJobsWriter) DeleteOldLogs(context.Context, time.Duration) (int
 }
 
 type stubJobsReader struct {
-	job metadata.JobMetadata
+	job *metadata.JobMetadataModel
 	err error
 }
 
-func (r stubJobsReader) Get(context.Context, string) (metadata.JobMetadata, error) {
+func (r stubJobsReader) Get(context.Context, string) (*metadata.JobMetadataModel, error) {
 	return r.job, r.err
 }
 
-func (stubJobsReader) List(context.Context, metadata.ListFilter) ([]metadata.JobMetadata, error) {
+func (stubJobsReader) List(context.Context, metadata.ListFilter) ([]*metadata.JobMetadataModel, error) {
 	return nil, nil
 }
 
@@ -142,15 +142,15 @@ func (stubJobsReader) CountJobs(context.Context, metadata.ListFilter) (int64, er
 	return 0, nil
 }
 
-func (stubJobsReader) GetJobsByStatus(context.Context, metadata.JobStatus, int) ([]metadata.JobMetadata, error) {
+func (stubJobsReader) GetJobsByStatus(context.Context, metadata.JobStatus, int) ([]*metadata.JobMetadataModel, error) {
 	return nil, nil
 }
 
-func (stubJobsReader) GetPendingJobs(context.Context, int) ([]metadata.JobMetadata, error) {
+func (stubJobsReader) GetPendingJobs(context.Context, int) ([]*metadata.JobMetadataModel, error) {
 	return nil, nil
 }
 
-func (stubJobsReader) GetDispatchedJobs(context.Context, int) ([]metadata.JobMetadata, error) {
+func (stubJobsReader) GetDispatchedJobs(context.Context, int) ([]*metadata.JobMetadataModel, error) {
 	return nil, nil
 }
 

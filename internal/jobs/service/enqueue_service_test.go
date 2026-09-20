@@ -26,10 +26,10 @@ func (f fakeTopicResolver) Resolve(string) (string, error) {
 
 type fakeJobsWriter struct {
 	metadata.JobsWriter
-	created metadata.JobMetadata
+	created *metadata.JobMetadataModel
 }
 
-func (w *fakeJobsWriter) Create(_ context.Context, job metadata.JobMetadata) error {
+func (w *fakeJobsWriter) Create(_ context.Context, job *metadata.JobMetadataModel) error {
 	w.created = job
 	return nil
 }
@@ -67,9 +67,8 @@ func TestEnqueueService_EnqueueKnownJob(t *testing.T) {
 	if job.Topic != testTopicAccountsJobs {
 		t.Fatalf("topic=%q", job.Topic)
 	}
-	created := writer.created.(*metadata.JobMetadataModel)
-	if created.Topic != job.Topic {
-		t.Fatalf("persisted topic=%q", created.Topic)
+	if writer.created.Topic != job.Topic {
+		t.Fatalf("persisted topic=%q", writer.created.Topic)
 	}
 }
 
@@ -86,10 +85,10 @@ func TestEnqueueService_UnknownJobType(t *testing.T) {
 
 type fakeJobsReader struct{}
 
-func (fakeJobsReader) Get(context.Context, string) (metadata.JobMetadata, error) {
+func (fakeJobsReader) Get(context.Context, string) (*metadata.JobMetadataModel, error) {
 	return nil, metadata.ErrJobNotFound
 }
-func (fakeJobsReader) List(context.Context, metadata.ListFilter) ([]metadata.JobMetadata, error) {
+func (fakeJobsReader) List(context.Context, metadata.ListFilter) ([]*metadata.JobMetadataModel, error) {
 	return nil, nil
 }
 func (fakeJobsReader) GetLogs(context.Context, string, metadata.LogFilter) ([]metadata.JobLog, error) {
@@ -98,13 +97,13 @@ func (fakeJobsReader) GetLogs(context.Context, string, metadata.LogFilter) ([]me
 func (fakeJobsReader) CountJobs(context.Context, metadata.ListFilter) (int64, error) {
 	return 0, nil
 }
-func (fakeJobsReader) GetJobsByStatus(context.Context, metadata.JobStatus, int) ([]metadata.JobMetadata, error) {
+func (fakeJobsReader) GetJobsByStatus(context.Context, metadata.JobStatus, int) ([]*metadata.JobMetadataModel, error) {
 	return nil, nil
 }
-func (fakeJobsReader) GetPendingJobs(context.Context, int) ([]metadata.JobMetadata, error) {
+func (fakeJobsReader) GetPendingJobs(context.Context, int) ([]*metadata.JobMetadataModel, error) {
 	return nil, nil
 }
-func (fakeJobsReader) GetDispatchedJobs(context.Context, int) ([]metadata.JobMetadata, error) {
+func (fakeJobsReader) GetDispatchedJobs(context.Context, int) ([]*metadata.JobMetadataModel, error) {
 	return nil, nil
 }
 func (fakeJobsReader) GetRecentLogs(context.Context, string, int) ([]metadata.JobLog, error) {

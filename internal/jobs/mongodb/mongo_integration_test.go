@@ -15,24 +15,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-// bogusJob satisfies JobMetadata for Create/Update but is never *metadata.JobMetadataModel.
-type bogusJobMeta struct{}
-
-func (bogusJobMeta) GetJobID() string                    { return "20000000-0000-0000-0000-000000000001" }
-func (bogusJobMeta) GetName() string                     { return "bogus" }
-func (bogusJobMeta) GetStatus() metadata.JobStatus       { return metadata.JobStatusPendingDispatch }
-func (bogusJobMeta) GetPriority() int                    { return 5 }
-func (bogusJobMeta) GetCreatedAt() time.Time             { return time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC) }
-func (bogusJobMeta) GetStartedAt() *time.Time            { return nil }
-func (bogusJobMeta) GetCompletedAt() *time.Time          { return nil }
-func (bogusJobMeta) GetPayload() interface{}             { return map[string]any{} }
-func (bogusJobMeta) GetMetadata() map[string]interface{} { return map[string]interface{}{} }
-func (bogusJobMeta) GetErrors() []metadata.JobError      { return nil }
-func (bogusJobMeta) GetLatestError() string              { return "" }
-func (bogusJobMeta) GetRetryCount() int                  { return 0 }
-func (bogusJobMeta) GetTags() []string                   { return nil }
-func (bogusJobMeta) Validate() error                     { return nil }
-
 // Integration tests require MongoDB (for example: task mongo-up).
 // Run: task test-integration
 //
@@ -200,10 +182,6 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatal("Create invalid name per DB schema: want error")
 		}
 
-		if err := writer.Create(ctx, bogusJobMeta{}); err == nil {
-			t.Fatal("Create non-model job (wrong BSON shape vs schema): want error")
-		}
-
 		dup := metadata.NewJobMetadata(metadata.GenerateJobID(), "dup", nil)
 		if err := writer.Create(ctx, dup); err != nil {
 			t.Fatalf("first Create: %v", err)
@@ -242,7 +220,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := got.(*metadata.JobMetadataModel).Metadata["edited"]; !ok {
+		if _, ok := got.Metadata["edited"]; !ok {
 			t.Fatalf("expected metadata key edited after Update")
 		}
 
@@ -253,7 +231,7 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		}
 
 		wantName := "patched-bogus"
-		if err := writer.Update(ctx, bogusJobMeta{}.GetJobID(), metadata.UpdateJob{Name: &wantName}); !errors.Is(err, metadata.ErrJobNotFound) {
+		if err := writer.Update(ctx, "20000000-0000-0000-0000-000000000001", metadata.UpdateJob{Name: &wantName}); !errors.Is(err, metadata.ErrJobNotFound) {
 			t.Fatalf("Update unknown bogus job id: got %v want %v", err, metadata.ErrJobNotFound)
 		}
 
@@ -471,11 +449,10 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &running, StartedAt: &tStarted}); err != nil {
 			t.Fatal(err)
 		}
-		firstJM, err := reader.Get(ctx, j.JobID)
+		first, err := reader.Get(ctx, j.JobID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		first := firstJM.(*metadata.JobMetadataModel)
 		saved := first.StartedAt
 		if saved == nil {
 			t.Fatal("nil startedAt")
@@ -487,11 +464,10 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		gotJM, err := reader.Get(ctx, j.JobID)
+		got, err := reader.Get(ctx, j.JobID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := gotJM.(*metadata.JobMetadataModel)
 		if got.StartedAt == nil || !got.StartedAt.Equal(*saved) {
 			t.Fatalf("startedAt changed: %+v vs %+v", got.StartedAt, saved)
 		}
@@ -777,22 +753,18 @@ func TestIntegration_MongoDispatchWriter(t *testing.T) {
 	})
 }
 
-func mustJobModel(t *testing.T, jm metadata.JobMetadata, err error) *metadata.JobMetadataModel {
+func mustJobModel(t *testing.T, jm *metadata.JobMetadataModel, err error) *metadata.JobMetadataModel {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, ok := jm.(*metadata.JobMetadataModel)
-	if !ok {
-		t.Fatalf("not *metadata.JobMetadataModel: %T", jm)
-	}
-	return model
+	return jm
 }
 
-func jobIDs(jobs []metadata.JobMetadata) []string {
+func jobIDs(jobs []*metadata.JobMetadataModel) []string {
 	out := make([]string, 0, len(jobs))
 	for _, j := range jobs {
-		out = append(out, j.GetJobID())
+		out = append(out, j.JobID)
 	}
 	return out
 }

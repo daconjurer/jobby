@@ -35,7 +35,7 @@ func TestOutputFormat_Table(t *testing.T) {
 
 	t.Run("jobs", func(t *testing.T) {
 		var buf strings.Builder
-		jobs := []metadata.JobMetadata{
+		jobs := []*metadata.JobMetadataModel{
 			&metadata.JobMetadataModel{
 				JobID:      "00000000-0000-0000-0000-000000000001",
 				Name:       "demo",

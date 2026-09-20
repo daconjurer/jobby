@@ -63,8 +63,6 @@ type JobMetadataModel struct {
 	DispatchedAt      *time.Time `bson:"dispatchedAt,omitempty" json:"dispatchedAt,omitempty"`
 }
 
-var _ JobMetadata = (*JobMetadataModel)(nil)
-
 // NewJobMetadata creates a new job metadata with sensible defaults
 func NewJobMetadata(jobID, name string, payload map[string]any) *JobMetadataModel {
 	now := time.Now()
@@ -285,13 +283,4 @@ func (j *JobMetadataModel) Duration() time.Duration {
 // Age returns how long ago the job was created
 func (j *JobMetadataModel) Age() time.Duration {
 	return time.Since(j.CreatedAt)
-}
-
-// AsJobModel returns the concrete model behind a JobMetadata value.
-func AsJobModel(job JobMetadata) (*JobMetadataModel, error) {
-	model, ok := job.(*JobMetadataModel)
-	if !ok {
-		return nil, fmt.Errorf("unexpected job metadata type %T", job)
-	}
-	return model, nil
 }

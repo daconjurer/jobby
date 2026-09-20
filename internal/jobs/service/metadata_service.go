@@ -74,12 +74,12 @@ type CreateJobOptions struct {
 }
 
 // GetJob retrieves a job by ID.
-func (s *MetadataService) GetJob(ctx context.Context, jobID string) (metadata.JobMetadata, error) {
+func (s *MetadataService) GetJob(ctx context.Context, jobID string) (*metadata.JobMetadataModel, error) {
 	return s.reader.Get(ctx, jobID)
 }
 
 // ListJobs retrieves jobs with filtering.
-func (s *MetadataService) ListJobs(ctx context.Context, filter metadata.ListFilter) ([]metadata.JobMetadata, error) {
+func (s *MetadataService) ListJobs(ctx context.Context, filter metadata.ListFilter) ([]*metadata.JobMetadataModel, error) {
 	return s.reader.List(ctx, filter)
 }
 
@@ -145,7 +145,7 @@ func (s *MetadataService) StartJob(ctx context.Context, jobID string) (bool, err
 		if getErr != nil {
 			log.Printf("warning: duplicate delivery for job %s, failed to get current status: %v", jobID, getErr)
 		} else {
-			log.Printf("warning: duplicate delivery for job %s, current status: %s", jobID, job.GetStatus())
+			log.Printf("warning: duplicate delivery for job %s, current status: %s", jobID, job.Status)
 		}
 		return false, nil
 	}
@@ -173,12 +173,8 @@ func (s *MetadataService) CompleteJob(ctx context.Context, jobID string, result 
 		if err != nil {
 			return fmt.Errorf("failed to get job: %w", err)
 		}
-		model, err := metadata.AsJobModel(job)
-		if err != nil {
-			return err
-		}
-		model.SetMetadataField("result", result)
-		meta := model.Metadata
+		job.SetMetadataField("result", result)
+		meta := job.Metadata
 		metaPtr = &meta
 	}
 
@@ -189,10 +185,8 @@ func (s *MetadataService) CompleteJob(ctx context.Context, jobID string, result 
 	if matched {
 		logCtx := map[string]any(nil)
 		if job, getErr := s.reader.Get(ctx, jobID); getErr == nil {
-			if model, modelErr := metadata.AsJobModel(job); modelErr == nil {
-				logCtx = map[string]any{
-					"duration": model.Duration().String(),
-				}
+			logCtx = map[string]any{
+				"duration": job.Duration().String(),
 			}
 		}
 		logEntry := metadata.NewJobLogWithContext(
@@ -211,13 +205,13 @@ func (s *MetadataService) CompleteJob(ctx context.Context, jobID string, result 
 	if err != nil {
 		return fmt.Errorf("failed to get job after complete miss: %w", err)
 	}
-	if job.GetStatus().IsTerminal() {
+	if job.Status.IsTerminal() {
 		return metadata.ErrJobAlreadyTerminal
 	}
-	if job.GetStatus() == metadata.JobStatusDispatched {
+	if job.Status == metadata.JobStatusDispatched {
 		return fmt.Errorf("cannot complete job %s in dispatched state", jobID)
 	}
-	return fmt.Errorf("unexpected job status %s for complete", job.GetStatus())
+	return fmt.Errorf("unexpected job status %s for complete", job.Status)
 }
 
 // FailJob marks a job as failed with an error message.
@@ -233,7 +227,7 @@ func (s *MetadataService) FailJob(ctx context.Context, jobID string, jobErr erro
 	}
 	entry := metadata.JobError{
 		Type:         metadata.JobErrorTypeExecution,
-		RetryAttempt: job.GetRetryCount(),
+		RetryAttempt: job.RetryCount,
 		Error:        errMsg,
 		Timestamp:    time.Now().UTC(),
 	}
@@ -262,10 +256,10 @@ func (s *MetadataService) FailJob(ctx context.Context, jobID string, jobErr erro
 	if err != nil {
 		return fmt.Errorf("failed to get job after fail miss: %w", err)
 	}
-	if refreshed.GetStatus().IsTerminal() {
+	if refreshed.Status.IsTerminal() {
 		return metadata.ErrJobAlreadyTerminal
 	}
-	return fmt.Errorf("unexpected job status %s for fail", refreshed.GetStatus())
+	return fmt.Errorf("unexpected job status %s for fail", refreshed.Status)
 }
 
 // CancelJob cancels a job if it's not already in a terminal state.
@@ -275,28 +269,23 @@ func (s *MetadataService) CancelJob(ctx context.Context, jobID string, reason st
 		return fmt.Errorf("failed to get job: %w", err)
 	}
 
-	if job.GetStatus().IsTerminal() {
-		return fmt.Errorf("cannot cancel job in %s state", job.GetStatus())
+	if job.Status.IsTerminal() {
+		return fmt.Errorf("cannot cancel job in %s state", job.Status)
 	}
 
-	model, err := metadata.AsJobModel(job)
-	if err != nil {
-		return err
-	}
-
-	if err := model.SetStatus(metadata.JobStatusCancelled); err != nil {
+	if err := job.SetStatus(metadata.JobStatusCancelled); err != nil {
 		return fmt.Errorf("invalid status transition: %w", err)
 	}
 
 	if reason != "" {
-		model.SetMetadataField("cancellation_reason", reason)
+		job.SetMetadataField("cancellation_reason", reason)
 	}
 
-	st := model.Status
-	meta := model.Metadata
+	st := job.Status
+	meta := job.Metadata
 	var completedAt *time.Time
-	if model.CompletedAt != nil {
-		t := *model.CompletedAt
+	if job.CompletedAt != nil {
+		t := *job.CompletedAt
 		completedAt = &t
 	}
 	patch := metadata.UpdateJob{Status: &st, CompletedAt: completedAt, Metadata: &meta}
@@ -326,12 +315,7 @@ func (s *MetadataService) RetryJob(ctx context.Context, jobID string) error {
 		return fmt.Errorf("failed to get job: %w", err)
 	}
 
-	model, err := metadata.AsJobModel(job)
-	if err != nil {
-		return err
-	}
-
-	if model.GetStatus() != metadata.JobStatusFailed {
+	if job.Status != metadata.JobStatusFailed {
 		return fmt.Errorf("only failed jobs can be retried")
 	}
 

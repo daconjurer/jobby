@@ -218,20 +218,16 @@ func waitForMinDispatchAttempts(tb testing.TB, svc *service.MetadataService, job
 	tb.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		job, err := svc.GetJob(context.Background(), jobID)
-		if err == nil {
-			model := job.(*metadata.JobMetadataModel)
-			if model.DispatchAttempts >= minAttempts {
-				return model
-			}
+		model, err := svc.GetJob(context.Background(), jobID)
+		if err == nil && model.DispatchAttempts >= minAttempts {
+			return model
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	job, err := svc.GetJob(context.Background(), jobID)
+	model, err := svc.GetJob(context.Background(), jobID)
 	if err != nil {
 		tb.Fatalf("GetJob(%s): %v", jobID, err)
 	}
-	model := job.(*metadata.JobMetadataModel)
 	tb.Fatalf("job %s dispatchAttempts=%d want >= %d after %s", jobID, model.DispatchAttempts, minAttempts, timeout)
 	return nil
 }
@@ -240,20 +236,16 @@ func waitForJobStatus(tb testing.TB, svc *service.MetadataService, jobID string,
 	tb.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		job, err := svc.GetJob(context.Background(), jobID)
-		if err == nil {
-			model := job.(*metadata.JobMetadataModel)
-			if model.Status == want {
-				return model
-			}
+		model, err := svc.GetJob(context.Background(), jobID)
+		if err == nil && model.Status == want {
+			return model
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	job, err := svc.GetJob(context.Background(), jobID)
+	model, err := svc.GetJob(context.Background(), jobID)
 	if err != nil {
 		tb.Fatalf("GetJob(%s): %v", jobID, err)
 	}
-	model := job.(*metadata.JobMetadataModel)
 	tb.Fatalf("job %s status=%s want %s after %s", jobID, model.Status, want, timeout)
 	return nil
 }
@@ -264,21 +256,17 @@ func waitForJobStatusOrBeyond(tb testing.TB, svc *service.MetadataService, jobID
 	tb.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		job, err := svc.GetJob(context.Background(), jobID)
-		if err == nil {
-			model := job.(*metadata.JobMetadataModel)
-			// Accept if at target status or any terminal status
-			if model.Status == minStatus || model.Status.IsTerminal() {
-				return model
-			}
+		model, err := svc.GetJob(context.Background(), jobID)
+		// Accept if at target status or any terminal status
+		if err == nil && (model.Status == minStatus || model.Status.IsTerminal()) {
+			return model
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	job, err := svc.GetJob(context.Background(), jobID)
+	model, err := svc.GetJob(context.Background(), jobID)
 	if err != nil {
 		tb.Fatalf("GetJob(%s): %v", jobID, err)
 	}
-	model := job.(*metadata.JobMetadataModel)
 	tb.Fatalf("job %s status=%s want at least %s after %s", jobID, model.Status, minStatus, timeout)
 	return nil
 }

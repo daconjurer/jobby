@@ -19,11 +19,11 @@ type MongoJobsWriter struct {
 var _ metadata.JobsWriter = (*MongoJobsWriter)(nil)
 
 // Create inserts a new job metadata record (no domain validation).
-func (w *MongoJobsWriter) Create(ctx context.Context, job metadata.JobMetadata) error {
+func (w *MongoJobsWriter) Create(ctx context.Context, job *metadata.JobMetadataModel) error {
 	_, err := w.metadataCollection.InsertOne(ctx, job)
 	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
-			return fmt.Errorf("job with ID %s already exists", job.GetJobID())
+			return fmt.Errorf("job with ID %s already exists", job.JobID)
 		}
 		return fmt.Errorf("failed to insert job: %w", err)
 	}

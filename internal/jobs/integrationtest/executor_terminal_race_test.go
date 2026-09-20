@@ -219,11 +219,10 @@ func TestIntegration_Executor_CompleteBeforeExternalFail(t *testing.T) {
 		t.Fatalf("FailJob after complete: err=%v want ErrJobAlreadyTerminal", err)
 	}
 
-	final, err := eh.dispatch.metadataSvc.GetJob(context.Background(), job.JobID)
+	model, err := eh.dispatch.metadataSvc.GetJob(context.Background(), job.JobID)
 	if err != nil {
 		t.Fatalf("GetJob: %v", err)
 	}
-	model := final.(*metadata.JobMetadataModel)
 	if model.Status != metadata.JobStatusCompleted {
 		t.Fatalf("status=%s want completed after rejected fail", model.Status)
 	}
@@ -263,11 +262,10 @@ func TestIntegration_Executor_TerminalRedeliverySkipsHandler(t *testing.T) {
 		t.Fatalf("handler execCount=%d want 1 after terminal redelivery", echo.execCount.Load())
 	}
 
-	final, err := eh.dispatch.metadataSvc.GetJob(context.Background(), job.JobID)
+	model, err := eh.dispatch.metadataSvc.GetJob(context.Background(), job.JobID)
 	if err != nil {
 		t.Fatalf("GetJob: %v", err)
 	}
-	model := final.(*metadata.JobMetadataModel)
 	if model.Status != metadata.JobStatusCompleted {
 		t.Fatalf("status=%s want completed after redelivery skip", model.Status)
 	}

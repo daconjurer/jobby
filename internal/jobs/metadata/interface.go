@@ -5,51 +5,6 @@ import (
 	"time"
 )
 
-// JobMetadata is the interface that ALL job types must implement.
-type JobMetadata interface {
-	// GetJobID returns the unique job identifier (UUID format)
-	GetJobID() string
-
-	// GetName returns the job type name (e.g., "process-kml")
-	GetName() string
-
-	// GetStatus returns the current job lifecycle status (dispatch + execution).
-	GetStatus() JobStatus
-
-	// GetPriority returns the job priority (0-10, where 10 is highest)
-	GetPriority() int
-
-	// GetCreatedAt returns the job creation timestamp
-	GetCreatedAt() time.Time
-
-	// GetStartedAt returns the job start timestamp (nil if not started)
-	GetStartedAt() *time.Time
-
-	// GetCompletedAt returns the job completion timestamp (nil if not completed)
-	GetCompletedAt() *time.Time
-
-	// GetPayload returns the job-specific data (dynamic schema per job type)
-	GetPayload() any
-
-	// GetMetadata returns additional metadata fields as key-value pairs
-	GetMetadata() map[string]any
-
-	// GetErrors returns the complete error history across all retry attempts
-	GetErrors() []JobError
-
-	// GetLatestError returns the most recent error message (convenience method)
-	GetLatestError() string
-
-	// GetRetryCount returns the number of retry attempts
-	GetRetryCount() int
-
-	// GetTags returns job tags for filtering and categorization
-	GetTags() []string
-
-	// Validate checks if the job metadata is valid according to business rules
-	Validate() error
-}
-
 // JobStatus represents the full job lifecycle: dispatch (Mongo → Pulsar) then execution.
 type JobStatus string
 
@@ -139,13 +94,13 @@ func (s JobStatus) CanTransitionTo(target JobStatus) bool {
 
 // JobsReader defines read-only operations for job metadata and logs.
 type JobsReader interface {
-	Get(ctx context.Context, jobID string) (JobMetadata, error)
-	List(ctx context.Context, filter ListFilter) ([]JobMetadata, error)
+	Get(ctx context.Context, jobID string) (*JobMetadataModel, error)
+	List(ctx context.Context, filter ListFilter) ([]*JobMetadataModel, error)
 	GetLogs(ctx context.Context, jobID string, filter LogFilter) ([]JobLog, error)
 	CountJobs(ctx context.Context, filter ListFilter) (int64, error)
-	GetJobsByStatus(ctx context.Context, status JobStatus, limit int) ([]JobMetadata, error)
-	GetPendingJobs(ctx context.Context, limit int) ([]JobMetadata, error)
-	GetDispatchedJobs(ctx context.Context, limit int) ([]JobMetadata, error)
+	GetJobsByStatus(ctx context.Context, status JobStatus, limit int) ([]*JobMetadataModel, error)
+	GetPendingJobs(ctx context.Context, limit int) ([]*JobMetadataModel, error)
+	GetDispatchedJobs(ctx context.Context, limit int) ([]*JobMetadataModel, error)
 	GetRecentLogs(ctx context.Context, jobID string, limit int) ([]JobLog, error)
 	GetErrorLogs(ctx context.Context, jobID string) ([]JobLog, error)
 }
@@ -153,7 +108,7 @@ type JobsReader interface {
 // JobsWriter defines write operations for job metadata and logs.
 // Methods take context.Context.
 type JobsWriter interface {
-	Create(ctx context.Context, job JobMetadata) error
+	Create(ctx context.Context, job *JobMetadataModel) error
 	Update(ctx context.Context, jobID string, patch UpdateJob) error
 	Delete(ctx context.Context, jobID string) error
 	IncrementRetryCount(ctx context.Context, jobID string) error

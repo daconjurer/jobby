@@ -11,19 +11,19 @@ import (
 	"github.com/daconjurer/jobby/internal/jobs/service"
 )
 
-func WriteJobsTable(w io.Writer, jobs []metadata.JobMetadata) error {
+func WriteJobsTable(w io.Writer, jobs []*metadata.JobMetadataModel) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	if err := writeLine(tw, "JOB ID\tNAME\tSTATUS\tPRIORITY\tRETRIES\tCREATED"); err != nil {
 		return err
 	}
 	for _, job := range jobs {
 		if err := writeFormat(tw, "%s\t%s\t%s\t%d\t%d\t%s\n",
-			job.GetJobID(),
-			job.GetName(),
-			job.GetStatus(),
-			job.GetPriority(),
-			job.GetRetryCount(),
-			formatTime(job.GetCreatedAt()),
+			job.JobID,
+			job.Name,
+			job.Status,
+			job.Priority,
+			job.RetryCount,
+			formatTime(job.CreatedAt),
 		); err != nil {
 			return err
 		}

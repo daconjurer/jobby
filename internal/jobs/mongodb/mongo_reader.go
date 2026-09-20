@@ -23,7 +23,7 @@ type MongoJobsReader struct {
 var _ metadata.JobsReader = (*MongoJobsReader)(nil)
 
 // Get retrieves a job metadata by ID (no ID-shape validation; empty string is a normal filter).
-func (r *MongoJobsReader) Get(ctx context.Context, jobID string) (metadata.JobMetadata, error) {
+func (r *MongoJobsReader) Get(ctx context.Context, jobID string) (*metadata.JobMetadataModel, error) {
 	filter := bson.M{"jobId": jobID}
 
 	var job metadata.JobMetadataModel
@@ -39,7 +39,7 @@ func (r *MongoJobsReader) Get(ctx context.Context, jobID string) (metadata.JobMe
 }
 
 // List retrieves job metadata with filtering and pagination.
-func (r *MongoJobsReader) List(ctx context.Context, filter metadata.ListFilter) (jobs []metadata.JobMetadata, err error) {
+func (r *MongoJobsReader) List(ctx context.Context, filter metadata.ListFilter) (jobs []*metadata.JobMetadataModel, err error) {
 	query := buildListQuery(filter)
 
 	opts := options.Find()
@@ -86,7 +86,7 @@ func (r *MongoJobsReader) List(ctx context.Context, filter metadata.ListFilter) 
 	}
 
 	if jobs == nil {
-		jobs = []metadata.JobMetadata{}
+		jobs = []*metadata.JobMetadataModel{}
 	}
 
 	return jobs, nil
@@ -103,7 +103,7 @@ func (r *MongoJobsReader) CountJobs(ctx context.Context, filter metadata.ListFil
 }
 
 // GetJobsByStatus lists jobs in the given status ordered by createdAt descending.
-func (r *MongoJobsReader) GetJobsByStatus(ctx context.Context, status metadata.JobStatus, limit int) ([]metadata.JobMetadata, error) {
+func (r *MongoJobsReader) GetJobsByStatus(ctx context.Context, status metadata.JobStatus, limit int) ([]*metadata.JobMetadataModel, error) {
 	f := metadata.ListFilter{
 		Statuses: []metadata.JobStatus{status},
 		SortBy:   "createdAt",
@@ -114,12 +114,12 @@ func (r *MongoJobsReader) GetJobsByStatus(ctx context.Context, status metadata.J
 }
 
 // GetPendingJobs lists jobs awaiting dispatch (pending_dispatch).
-func (r *MongoJobsReader) GetPendingJobs(ctx context.Context, limit int) ([]metadata.JobMetadata, error) {
+func (r *MongoJobsReader) GetPendingJobs(ctx context.Context, limit int) ([]*metadata.JobMetadataModel, error) {
 	return r.GetJobsByStatus(ctx, metadata.JobStatusPendingDispatch, limit)
 }
 
 // GetDispatchedJobs lists jobs on the broker awaiting executor pickup.
-func (r *MongoJobsReader) GetDispatchedJobs(ctx context.Context, limit int) ([]metadata.JobMetadata, error) {
+func (r *MongoJobsReader) GetDispatchedJobs(ctx context.Context, limit int) ([]*metadata.JobMetadataModel, error) {
 	return r.GetJobsByStatus(ctx, metadata.JobStatusDispatched, limit)
 }
 
