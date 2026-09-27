@@ -178,9 +178,8 @@ func (w *MongoJobsWriter) MarkDispatchedIfPending(ctx context.Context, jobID str
 	}
 	update := bson.M{
 		"$set": bson.M{
-			"status":         metadata.JobStatusDispatched,
-			"dispatchStatus": metadata.DispatchStatusDispatched,
-			"dispatchedAt":   dispatchedAt,
+			"status":       metadata.JobStatusDispatched,
+			"dispatchedAt": dispatchedAt,
 		},
 	}
 	result, err := w.metadataCollection.UpdateOne(ctx, filter, update)
@@ -227,8 +226,7 @@ func (w *MongoJobsWriter) MarkDispatchFailedIfPending(ctx context.Context, jobID
 
 	update := bson.M{
 		"$set": bson.M{
-			"status":         metadata.JobStatusDispatchFailed,
-			"dispatchStatus": metadata.DispatchStatusFailed,
+			"status": metadata.JobStatusDispatchFailed,
 		},
 		"$push": bson.M{
 			"errors": errorEntry,
@@ -250,9 +248,8 @@ func (w *MongoJobsWriter) MarkRunningIfDispatched(ctx context.Context, jobID str
 	}
 	update := bson.M{
 		"$set": bson.M{
-			"status":          metadata.JobStatusRunning,
-			"executionStatus": metadata.ExecutionStatusRunning,
-			"startedAt":       startedAt,
+			"status":    metadata.JobStatusRunning,
+			"startedAt": startedAt,
 		},
 	}
 	result, err := w.metadataCollection.UpdateOne(ctx, filter, update)
@@ -270,9 +267,8 @@ func (w *MongoJobsWriter) CompleteIfRunning(ctx context.Context, jobID string, c
 		"status": metadata.JobStatusRunning,
 	}
 	setDoc := bson.M{
-		"status":          metadata.JobStatusCompleted,
-		"executionStatus": metadata.ExecutionStatusCompleted,
-		"completedAt":     completedAt,
+		"status":      metadata.JobStatusCompleted,
+		"completedAt": completedAt,
 	}
 	if meta != nil {
 		setDoc["metadata"] = *meta
@@ -300,9 +296,8 @@ func (w *MongoJobsWriter) FailIfNotTerminal(ctx context.Context, jobID string, j
 	update := bson.A{
 		bson.M{
 			"$set": bson.M{
-				"status":          metadata.JobStatusFailed,
-				"executionStatus": metadata.ExecutionStatusFailed,
-				"completedAt":     completedAt,
+				"status":      metadata.JobStatusFailed,
+				"completedAt": completedAt,
 				"startedAt":   bson.M{"$ifNull": bson.A{"$startedAt", completedAt}},
 				"errors": bson.M{
 					"$concatArrays": bson.A{
