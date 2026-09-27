@@ -2,17 +2,25 @@
 
 Copy [**.env.example**](../../.env.example) to **`.env`** before running **`docker compose`** or integration tests.
 
-## Compose vs host variables
+## Host vs container variables
 
-Compose services use `env_file: .env` with in-cluster overrides:
+The same variable names are used on the host and in containers.
+Which value applies depends on the file that is loaded:
 
-| Variable | Used by | Value (in-cluster) |
-|----------|---------|----------------------|
-| **`COMPOSE_MONGODB_URI`** | **`migrate`** | `mongodb:27017`, `authSource=admin` |
-| **`COMPOSE_APP_MONGODB_URI`** | **`jobs-server`**, **`jobs-dispatcher`**, **`jobs-executor`** | `mongodb:27017`, `authSource=jobby` |
-| **`COMPOSE_PULSAR_SERVICE_URL`** | dispatcher and executor | `pulsar:6650` |
+- **`.env`** (copied from `.env.example`) is the **host** configuration for tasks, tests, and debugging.
+- **[`docker/app.env`](../../docker/app.env)** is committed and loaded **after** `.env` by `env_file` in `compose.yml`, so it overrides the address-bearing variables with their in-network values:
 
-Host binaries and integration tests use the non-`COMPOSE_*` variables from **`.env`**:
+| Variable | Container value (`docker/app.env`) |
+|----------|-------------------------------------|
+| **`MONGODB_URI`** | `mongodb:27017`, `authSource=jobby` |
+| **`PULSAR_SERVICE_URL`** | `pulsar:6650` |
+| **`JOB_TOPICS_CONFIG_PATH`** | `/app/config/job-topics.yaml` |
+| **`DISPATCH_STREAM_MONGODB_RESUME_TOKEN_PATH`** | `/tmp/jobby-dispatch-mongodb-resume-token.json` |
+
+The `migrate` service additionally sets an admin **`MONGO_URI`** inline in `compose.yml`, so admin credentials are not exposed to the application containers.
+All other variables (timeouts, pool sizes, collection names, dispatch tuning) are shared and come from `.env`.
+
+Host binaries and integration tests use these values from **`.env`**:
 
 | Variable | Typical value | Notes |
 |----------|---------------|-------|
@@ -33,7 +41,7 @@ From the **host**, connect through the published port **`localhost:27018`**. The
 - **`replicaSet=rs0`** — driver treats the deployment as a replica set (change streams, transactions semantics).
 - **`directConnection=true`** — pin to the seed host only. Without it, the driver learns **`mongodb:27017`** from the server and tries to reach that hostname, which does not resolve on the host (`lookup mongodb: no such host`).
 
-In-container services use **`COMPOSE_*`** variables with **`mongodb:27017`** and do **not** need **`directConnection=true`**.
+In-container services get **`mongodb:27017`** from **`docker/app.env`** and do **not** need **`directConnection=true`**.
 
 Database name and collection names align with what **`migrations/001_initialize_database`** creates for that stack.
 

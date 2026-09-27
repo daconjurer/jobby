@@ -6,8 +6,9 @@ services:
     image: jobby-migrate
     env_file:
       - .env
+      - docker/app.env
     environment:
-      MONGO_URI: ${COMPOSE_MONGODB_URI}
+      MONGO_URI: mongodb://jobby_admin:jobby_admin_pass@mongodb:27017/jobby?authSource=admin&replicaSet=rs0
       MIGRATIONS_PATH: /app/migrations
     depends_on:
       mongo-init:
@@ -94,9 +95,7 @@ services:
       - "3001:3001"
     env_file:
       - .env
-    environment:
-      MONGODB_URI: ${COMPOSE_APP_MONGODB_URI}
-      JOB_TOPICS_CONFIG_PATH: /app/config/job-topics.yaml
+      - docker/app.env
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -120,10 +119,7 @@ services:
     image: jobby-jobs-dispatcher
     env_file:
       - .env
-    environment:
-      MONGODB_URI: ${COMPOSE_APP_MONGODB_URI}
-      PULSAR_SERVICE_URL: ${COMPOSE_PULSAR_SERVICE_URL}
-      DISPATCH_STREAM_MONGODB_RESUME_TOKEN_PATH: /tmp/jobby-dispatch-mongodb-resume-token.json
+      - docker/app.env
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -142,10 +138,7 @@ services:
     image: jobby-jobs-executor
     env_file:
       - .env
-    environment:
-      MONGODB_URI: ${COMPOSE_APP_MONGODB_URI}
-      PULSAR_SERVICE_URL: ${COMPOSE_PULSAR_SERVICE_URL}
-      JOB_TOPICS_CONFIG_PATH: /app/config/job-topics.yaml
+      - docker/app.env
     depends_on:
       migrate:
         condition: service_completed_successfully
