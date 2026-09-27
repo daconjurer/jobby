@@ -50,7 +50,90 @@ type JobMetadata interface {
 	Validate() error
 }
 
+// DispatchStatus represents the dispatcher-owned state: publish and retry bookkeeping.
+type DispatchStatus string
+
+const (
+	DispatchStatusPending  DispatchStatus = "pending_dispatch"
+	DispatchStatusDispatched DispatchStatus = "dispatched"
+	DispatchStatusFailed   DispatchStatus = "dispatch_failed"
+)
+
+func (s DispatchStatus) String() string    { return string(s) }
+func (s DispatchStatus) IsValid() bool {
+	switch s {
+	case DispatchStatusPending, DispatchStatusDispatched, DispatchStatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+func (s DispatchStatus) IsTerminal() bool { return false }
+
+func (s DispatchStatus) CanTransitionTo(target DispatchStatus) bool {
+	if !target.IsValid() || s == target {
+		return false
+	}
+	switch s {
+	case DispatchStatusPending:
+		return target == DispatchStatusDispatched || target == DispatchStatusFailed
+	case DispatchStatusFailed:
+		return target == DispatchStatusPending
+	case DispatchStatusDispatched:
+		return false
+	default:
+		return false
+	}
+}
+
+// ExecutionStatus represents the executor/cancel-owned state: run lifecycle.
+type ExecutionStatus string
+
+const (
+	ExecutionStatusNotStarted ExecutionStatus = "not_started"
+	ExecutionStatusRunning    ExecutionStatus = "running"
+	ExecutionStatusCompleted  ExecutionStatus = "completed"
+	ExecutionStatusFailed     ExecutionStatus = "failed"
+	ExecutionStatusCancelled  ExecutionStatus = "cancelled"
+)
+
+func (s ExecutionStatus) String() string    { return string(s) }
+func (s ExecutionStatus) IsValid() bool {
+	switch s {
+	case ExecutionStatusNotStarted, ExecutionStatusRunning, ExecutionStatusCompleted, ExecutionStatusFailed, ExecutionStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+func (s ExecutionStatus) IsTerminal() bool {
+	return s == ExecutionStatusCompleted || s == ExecutionStatusFailed || s == ExecutionStatusCancelled
+}
+func (s ExecutionStatus) IsRunning() bool { return s == ExecutionStatusRunning }
+
+func (s ExecutionStatus) CanTransitionTo(target ExecutionStatus) bool {
+	if !target.IsValid() || s == target {
+		return false
+	}
+	if s.IsTerminal() {
+		return false
+	}
+	switch s {
+	case ExecutionStatusNotStarted:
+		return target == ExecutionStatusRunning ||
+			target == ExecutionStatusFailed ||
+			target == ExecutionStatusCancelled
+	case ExecutionStatusRunning:
+		return target == ExecutionStatusCompleted ||
+			target == ExecutionStatusFailed ||
+			target == ExecutionStatusCancelled
+	default:
+		return false
+	}
+}
+
 // JobStatus represents the full job lifecycle: dispatch (Mongo → Pulsar) then execution.
+// Kept as a display-value alias; the model now stores DispatchStatus + ExecutionStatus.
 type JobStatus string
 
 const (
