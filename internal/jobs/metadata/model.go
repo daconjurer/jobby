@@ -165,7 +165,7 @@ func (j *JobMetadataModel) Validate() error {
 		return fmt.Errorf("invalid executionStatus value: %s", j.ExecutionStatus)
 	}
 
-	if j.Status != "" && !j.Status.IsValid() {
+	if !j.Status.IsValid() {
 		return fmt.Errorf("invalid status value: %s", j.Status)
 	}
 

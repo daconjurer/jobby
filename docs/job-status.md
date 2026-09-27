@@ -4,7 +4,7 @@ A job's `status` covers both the dispatch phase (MongoDB to Pulsar) and the exec
 The allowed transitions are defined by `JobStatus.CanTransitionTo` in `internal/jobs/metadata/interface.go`.
 The conditional writes in `internal/jobs/mongodb/mongo_writer.go` enforce them per transition.
 
-See [job-saga.md](./job-saga.md) for the dispatch phase and [dispatch-worker.md](./dispatch-worker.md) for the worker wiring.
+See [job-saga.md](./architecture/job-saga.md) for the dispatch phase and [dispatch-worker.md](./architecture/dispatch-worker.md) for the worker wiring.
 
 ## Diagram
 
@@ -50,6 +50,6 @@ stateDiagram-v2
 
 ## Superseded by a status split
 
-The transitions `pending_dispatch` to `dispatched` and `dispatched` to `running` are written by two different services (dispatcher and executor), which creates a race described in [dispatch-executor-race.md](./dispatch-executor-race.md).
-The proposed fix, [dispatch-execution-status-split.md](./dispatch-execution-status-split.md), replaces this single `status` field with two independently-owned fields.
+The transitions `pending_dispatch` to `dispatched` and `dispatched` to `running` are written by two different services (dispatcher and executor), which creates a race described in [dispatch-executor-race.md](./architecture/dispatch-executor-race.md).
+The proposed fix, [dispatch-execution-status-split.md](../planning/dispatch-execution-status-split/dispatch-execution-status-split.md), replaces this single `status` field with two independently-owned fields.
 This document still describes the state machine as implemented today.
