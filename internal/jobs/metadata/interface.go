@@ -301,6 +301,8 @@ type ListFilter struct {
 // bson tags mirror JobMetadataModel (see bsonPartialSet). Use IncrementRetryCount for atomic retry bumps.
 type UpdateJob struct {
 	Status            *JobStatus      `bson:"status,omitempty"`
+	DispatchStatus    *DispatchStatus `bson:"dispatchStatus,omitempty"`
+	ExecutionStatus   *ExecutionStatus `bson:"executionStatus,omitempty"`
 	Name              *string         `bson:"name,omitempty"`
 	Priority          *int            `bson:"priority,omitempty"`
 	StartedAt         *time.Time      `bson:"startedAt,omitempty"`
