@@ -1,0 +1,25 @@
+---
+commands:
+  prepare: go mod download
+  lint: golangci-lint run ./...
+  format: go fmt ./...
+  test: go test ./internal/... -count=1
+gates:
+  - name: integration-mongodb
+    after: test
+    command: task test-integration-ci-mongodb
+  - name: integration-pulsar
+    after: test
+    command: task test-integration-ci-pulsar
+  - name: integration-dispatch
+    after: test
+    command: task test-integration-ci-dispatch
+  - name: integration-http
+    after: test
+    command: task test-integration-ci-http
+  - name: integration-cli
+    after: test
+    command: task test-integration-ci-cli
+  - name: e2e
+    after: lint
+    command: task test-e2e-ci
