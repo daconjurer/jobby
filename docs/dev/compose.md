@@ -1,6 +1,6 @@
 # Compose services
 
-The [compose.yml](../../compose.yml) file defines the Docker Compose stack used for development and integration testing. Services load configuration from **`.env`** (created from [**.env.example**](../../.env.example)) via `env_file`, with in-cluster overrides using **`COMPOSE_*`** variables. All services share the explicit Docker network **`jobby`** (`networks.jobby.name`).
+The [compose.yml](../../compose.yml) file defines the Docker Compose stack used for development and integration testing. Services load configuration from **`.env`** (created from [**.env.example**](../../.env.example)) via `env_file`, then [**docker/app.env**](../../docker/app.env) for in-network overrides. All services share the explicit Docker network **`jobby`** (`networks.jobby.name`).
 
 Integration test tasks live in [taskfiles/integration/Taskfile.yml](../../taskfiles/integration/Taskfile.yml) (included with `flatten: true`, so names like `task test-integration` stay unchanged).
 
@@ -31,6 +31,6 @@ If migrate fails with **`network … not found`**, an old **migrate** container 
 
 ## Related docs
 
-- [Environment](./environment.md) — `COMPOSE_*` vs host variables
+- [Environment](./environment.md) — host vs container variables
 - [Local development](./local-development.md) — when to use `docker-up` vs `mongo-up`
 - [Testing](./testing.md) — which services each test category needs
