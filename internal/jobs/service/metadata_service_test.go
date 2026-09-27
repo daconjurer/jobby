@@ -312,6 +312,8 @@ func TestMetadataService_RetryJob_RejectsNonFailedStatus(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
 	job.Status = metadata.JobStatusPendingDispatch
+	job.DispatchStatus = metadata.DispatchStatusPending
+	job.ExecutionStatus = metadata.ExecutionStatusNotStarted
 	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
 
 	err := svc.RetryJob(ctx, job.JobID)
@@ -324,6 +326,8 @@ func TestMetadataService_CancelJob_RejectsTerminalStatus(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
 	job.Status = metadata.JobStatusFailed
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusFailed
 	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
 
 	err := svc.CancelJob(ctx, job.JobID, "too late")
@@ -393,6 +397,8 @@ func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromFailed(t *t
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
 	job.Status = metadata.JobStatusFailed
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusFailed
 	now := time.Now()
 	job.StartedAt = &now
 	job.CompletedAt = &now
@@ -410,6 +416,8 @@ func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromCompleted(t
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
 	job.Status = metadata.JobStatusCompleted
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusCompleted
 	now := time.Now()
 	job.StartedAt = &now
 	job.CompletedAt = &now
@@ -426,6 +434,8 @@ func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromCancelled(t
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
 	job.Status = metadata.JobStatusCancelled
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusCancelled
 	now := time.Now()
 	job.StartedAt = &now
 	job.CompletedAt = &now
@@ -442,6 +452,8 @@ func TestMetadataService_CompleteJob_SucceedsFromRunning(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
 	job.Status = metadata.JobStatusRunning
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusRunning
 	now := time.Now()
 	job.StartedAt = &now
 	writer := &recordingJobsWriter{completeIfRunningMatched: true}
@@ -464,6 +476,8 @@ func TestMetadataService_FailJob_ReturnsErrJobAlreadyTerminalFromFailed(t *testi
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
 	job.Status = metadata.JobStatusFailed
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusFailed
 	now := time.Now()
 	job.StartedAt = &now
 	job.CompletedAt = &now
@@ -481,6 +495,8 @@ func TestMetadataService_FailJob_ReturnsErrJobAlreadyTerminalFromCompleted(t *te
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
 	job.Status = metadata.JobStatusCompleted
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusCompleted
 	now := time.Now()
 	job.StartedAt = &now
 	job.CompletedAt = &now
@@ -497,6 +513,8 @@ func TestMetadataService_FailJob_ReturnsErrJobAlreadyTerminalFromCancelled(t *te
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
 	job.Status = metadata.JobStatusCancelled
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusCancelled
 	now := time.Now()
 	job.StartedAt = &now
 	job.CompletedAt = &now
@@ -513,6 +531,8 @@ func TestMetadataService_FailJob_SucceedsFromRunning(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
 	job.Status = metadata.JobStatusRunning
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusRunning
 	now := time.Now()
 	job.StartedAt = &now
 	writer := &recordingJobsWriter{failIfNotTerminalMatched: true}
@@ -539,6 +559,8 @@ func TestMetadataService_FailJob_SucceedsFromDispatched(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
 	job.Status = metadata.JobStatusDispatched
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusNotStarted
 	writer := &recordingJobsWriter{failIfNotTerminalMatched: true}
 
 	svc := NewMetadataService(stubJobsReader{job: job}, writer)
