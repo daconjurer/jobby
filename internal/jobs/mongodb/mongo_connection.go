@@ -98,9 +98,10 @@ func OpenMongoWatchClient(ctx context.Context, cfg MongoConfig, maxPoolSize uint
 	if maxPoolSize < 1 {
 		maxPoolSize = 2
 	}
+	// No client-wide SetTimeout here: it would bound every blocking change stream Next call,
+	// making an idle stream fail with a timeout error every cfg.Timeout.
 	clientOpts := options.Client().
 		ApplyURI(cfg.URI).
-		SetTimeout(cfg.Timeout).
 		SetMaxPoolSize(maxPoolSize).
 		SetMinPoolSize(0)
 
