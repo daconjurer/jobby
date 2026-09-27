@@ -42,21 +42,21 @@ type JobError struct {
 // - `omitempty` - Omit field if zero value
 // - `json:"fieldName"` - JSON field name for API responses
 type JobMetadataModel struct {
-	ID          bson.ObjectID  `bson:"_id,omitempty" json:"id,omitempty"`
-	JobID       string         `bson:"jobId" json:"jobId"`
-	Name        string         `bson:"name" json:"name"`
-	Status      JobStatus      `bson:"status,omitempty" json:"status,omitempty"`
-	DispatchStatus   DispatchStatus   `bson:"dispatchStatus" json:"dispatchStatus"`
-	ExecutionStatus  ExecutionStatus  `bson:"executionStatus" json:"executionStatus"`
-	Priority    int            `bson:"priority" json:"priority"`
-	CreatedAt   time.Time      `bson:"createdAt" json:"createdAt"`
-	StartedAt   *time.Time     `bson:"startedAt,omitempty" json:"startedAt,omitempty"`
-	CompletedAt *time.Time     `bson:"completedAt,omitempty" json:"completedAt,omitempty"`
-	Payload     map[string]any `bson:"payload" json:"payload"`
-	Metadata    map[string]any `bson:"metadata" json:"metadata"`
-	Errors      []JobError     `bson:"errors,omitempty" json:"errors,omitempty"`
-	RetryCount  int            `bson:"retryCount" json:"retryCount"`
-	Tags        []string       `bson:"tags" json:"tags"`
+	ID              bson.ObjectID   `bson:"_id,omitempty" json:"id,omitempty"`
+	JobID           string          `bson:"jobId" json:"jobId"`
+	Name            string          `bson:"name" json:"name"`
+	Status          JobStatus       `bson:"status,omitempty" json:"status,omitempty"`
+	DispatchStatus  DispatchStatus  `bson:"dispatchStatus" json:"dispatchStatus"`
+	ExecutionStatus ExecutionStatus `bson:"executionStatus" json:"executionStatus"`
+	Priority        int             `bson:"priority" json:"priority"`
+	CreatedAt       time.Time       `bson:"createdAt" json:"createdAt"`
+	StartedAt       *time.Time      `bson:"startedAt,omitempty" json:"startedAt,omitempty"`
+	CompletedAt     *time.Time      `bson:"completedAt,omitempty" json:"completedAt,omitempty"`
+	Payload         map[string]any  `bson:"payload" json:"payload"`
+	Metadata        map[string]any  `bson:"metadata" json:"metadata"`
+	Errors          []JobError      `bson:"errors,omitempty" json:"errors,omitempty"`
+	RetryCount      int             `bson:"retryCount" json:"retryCount"`
+	Tags            []string        `bson:"tags" json:"tags"`
 
 	// Dispatch phase (embedded on job_metadata; set at enqueue)
 	Topic             string     `bson:"topic,omitempty" json:"topic,omitempty"`

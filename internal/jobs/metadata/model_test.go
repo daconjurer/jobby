@@ -355,13 +355,13 @@ func TestJobMetadataModel_Validate(t *testing.T) {
 // TestJobMetadataModel_SetStatus tests status transitions
 func TestJobMetadataModel_SetStatus(t *testing.T) {
 	tests := []struct {
-		name              string
-		initialDispatch   DispatchStatus
-		initialExecution  ExecutionStatus
-		targetStatus      JobStatus
-		wantErr           bool
-		checkStarted      bool
-		checkComplete     bool
+		name             string
+		initialDispatch  DispatchStatus
+		initialExecution ExecutionStatus
+		targetStatus     JobStatus
+		wantErr          bool
+		checkStarted     bool
+		checkComplete    bool
 	}{
 		{
 			name:             "dispatched to running",

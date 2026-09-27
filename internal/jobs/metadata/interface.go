@@ -54,12 +54,12 @@ type JobMetadata interface {
 type DispatchStatus string
 
 const (
-	DispatchStatusPending  DispatchStatus = "pending_dispatch"
+	DispatchStatusPending    DispatchStatus = "pending_dispatch"
 	DispatchStatusDispatched DispatchStatus = "dispatched"
-	DispatchStatusFailed   DispatchStatus = "dispatch_failed"
+	DispatchStatusFailed     DispatchStatus = "dispatch_failed"
 )
 
-func (s DispatchStatus) String() string    { return string(s) }
+func (s DispatchStatus) String() string { return string(s) }
 func (s DispatchStatus) IsValid() bool {
 	switch s {
 	case DispatchStatusPending, DispatchStatusDispatched, DispatchStatusFailed:
@@ -97,7 +97,7 @@ const (
 	ExecutionStatusCancelled  ExecutionStatus = "cancelled"
 )
 
-func (s ExecutionStatus) String() string    { return string(s) }
+func (s ExecutionStatus) String() string { return string(s) }
 func (s ExecutionStatus) IsValid() bool {
 	switch s {
 	case ExecutionStatusNotStarted, ExecutionStatusRunning, ExecutionStatusCompleted, ExecutionStatusFailed, ExecutionStatusCancelled:
