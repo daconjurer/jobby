@@ -26,6 +26,8 @@ type recordingJobsWriter struct {
 	failIfNotTerminalMatched  bool
 	failIfNotTerminalErr      error
 	failIfNotTerminalCalls    []failIfNotTerminalCall
+	updateCalls               []metadata.UpdateJob
+	updateErr                 error
 	logs                      []metadata.JobLog
 	createErr                 error
 }
@@ -57,8 +59,9 @@ func (w *recordingJobsWriter) Create(context.Context, metadata.JobMetadata) erro
 	return w.createErr
 }
 
-func (w *recordingJobsWriter) Update(context.Context, string, metadata.UpdateJob) error {
-	return nil
+func (w *recordingJobsWriter) Update(_ context.Context, _ string, patch metadata.UpdateJob) error {
+	w.updateCalls = append(w.updateCalls, patch)
+	return w.updateErr
 }
 
 func (w *recordingJobsWriter) Delete(context.Context, string) error { return nil }
@@ -308,7 +311,7 @@ func TestMetadataService_CreateJob_ValidationFailure(t *testing.T) {
 	}
 }
 
-func TestMetadataService_RetryJob_RejectsNonFailedStatus(t *testing.T) {
+func TestMetadataService_RetryJob_RejectsNonFailedExecutionStatus(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
 	job.Status = metadata.JobStatusPendingDispatch
@@ -322,7 +325,38 @@ func TestMetadataService_RetryJob_RejectsNonFailedStatus(t *testing.T) {
 	}
 }
 
-func TestMetadataService_CancelJob_RejectsTerminalStatus(t *testing.T) {
+func TestMetadataService_RetryJob_ResetsBothSubStates(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
+	job.Status = metadata.JobStatusFailed
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusFailed
+	job.DispatchAttempts = 3
+	job.StartedAt = &now
+	job.CompletedAt = &now
+	writer := &recordingJobsWriter{}
+	svc := NewMetadataService(stubJobsReader{job: job}, writer)
+
+	if err := svc.RetryJob(ctx, job.JobID); err != nil {
+		t.Fatal(err)
+	}
+	if len(writer.updateCalls) != 1 {
+		t.Fatalf("update calls=%d want 1", len(writer.updateCalls))
+	}
+	patch := writer.updateCalls[0]
+	if patch.DispatchStatus == nil || *patch.DispatchStatus != metadata.DispatchStatusPending {
+		t.Fatalf("expected dispatchStatus=pending_dispatch, got %+v", patch.DispatchStatus)
+	}
+	if patch.ExecutionStatus == nil || *patch.ExecutionStatus != metadata.ExecutionStatusNotStarted {
+		t.Fatalf("expected executionStatus=not_started, got %+v", patch.ExecutionStatus)
+	}
+	if patch.DispatchAttempts == nil || *patch.DispatchAttempts != 0 {
+		t.Fatalf("expected dispatchAttempts=0, got %+v", patch.DispatchAttempts)
+	}
+}
+
+func TestMetadataService_CancelJob_RejectsTerminalExecutionStatus(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
 	job.Status = metadata.JobStatusFailed
@@ -333,6 +367,51 @@ func TestMetadataService_CancelJob_RejectsTerminalStatus(t *testing.T) {
 	err := svc.CancelJob(ctx, job.JobID, "too late")
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestMetadataService_CancelJob_DoesNotWriteDispatchStatus(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
+	job.Status = metadata.JobStatusDispatched
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusNotStarted
+	writer := &recordingJobsWriter{}
+	svc := NewMetadataService(stubJobsReader{job: job}, writer)
+
+	if err := svc.CancelJob(ctx, job.JobID, "user request"); err != nil {
+		t.Fatal(err)
+	}
+	if len(writer.updateCalls) != 1 {
+		t.Fatalf("update calls=%d want 1", len(writer.updateCalls))
+	}
+	patch := writer.updateCalls[0]
+	if patch.DispatchStatus != nil {
+		t.Fatalf("cancel should not write dispatchStatus, got %+v", patch.DispatchStatus)
+	}
+	if patch.ExecutionStatus == nil || *patch.ExecutionStatus != metadata.ExecutionStatusCancelled {
+		t.Fatalf("cancel should write executionStatus=cancelled, got %+v", patch.ExecutionStatus)
+	}
+}
+
+func TestMetadataService_CancelJob_CanCancelPendingDispatch(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
+	job.Status = metadata.JobStatusPendingDispatch
+	job.DispatchStatus = metadata.DispatchStatusPending
+	job.ExecutionStatus = metadata.ExecutionStatusNotStarted
+	writer := &recordingJobsWriter{}
+	svc := NewMetadataService(stubJobsReader{job: job}, writer)
+
+	if err := svc.CancelJob(ctx, job.JobID, "user request"); err != nil {
+		t.Fatal(err)
+	}
+	if len(writer.updateCalls) != 1 {
+		t.Fatalf("update calls=%d want 1", len(writer.updateCalls))
+	}
+	patch := writer.updateCalls[0]
+	if patch.ExecutionStatus == nil || *patch.ExecutionStatus != metadata.ExecutionStatusCancelled {
+		t.Fatalf("expected executionStatus=cancelled, got %+v", patch.ExecutionStatus)
 	}
 }
 
@@ -445,6 +524,24 @@ func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromCancelled(t
 	err := svc.CompleteJob(ctx, job.JobID, nil)
 	if !errors.Is(err, metadata.ErrJobAlreadyTerminal) {
 		t.Fatalf("expected ErrJobAlreadyTerminal, got %v", err)
+	}
+}
+
+func TestMetadataService_CompleteJob_RejectsNotStartedExecutionStatus(t *testing.T) {
+	ctx := context.Background()
+	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
+	job.Status = metadata.JobStatusDispatched
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusNotStarted
+
+	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
+
+	err := svc.CompleteJob(ctx, job.JobID, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if errors.Is(err, metadata.ErrJobAlreadyTerminal) {
+		t.Fatal("did not expect ErrJobAlreadyTerminal")
 	}
 }
 
