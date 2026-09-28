@@ -139,27 +139,43 @@ func applyStatus(job *metadata.JobMetadataModel, status metadata.JobStatus, f *g
 
 	switch status {
 	case metadata.JobStatusPendingDispatch:
+		job.DispatchStatus = metadata.DispatchStatusPending
+		job.ExecutionStatus = metadata.ExecutionStatusNotStarted
 		job.Topic = fakeTopic(f)
 		return
 	case metadata.JobStatusDispatched:
+		job.DispatchStatus = metadata.DispatchStatusDispatched
+		job.ExecutionStatus = metadata.ExecutionStatusNotStarted
 		job.Topic = fakeTopic(f)
 		dispatched := job.CreatedAt.Add(randomDuration(f, 1*time.Second, 30*time.Minute))
 		job.DispatchedAt = &dispatched
 		return
 	case metadata.JobStatusDispatchFailed:
+		job.DispatchStatus = metadata.DispatchStatusFailed
+		job.ExecutionStatus = metadata.ExecutionStatusNotStarted
 		job.Topic = fakeTopic(f)
 		job.DispatchAttempts = f.IntRange(1, 5)
 		job.DispatchLastError = f.Sentence(f.IntRange(3, 8))
 		return
 	case metadata.JobStatusRunning:
+		job.DispatchStatus = metadata.DispatchStatusDispatched
+		job.ExecutionStatus = metadata.ExecutionStatusRunning
 		started := job.CreatedAt.Add(randomDuration(f, 1*time.Minute, 2*time.Hour))
 		job.StartedAt = &started
 	case metadata.JobStatusCompleted, metadata.JobStatusCancelled:
+		job.DispatchStatus = metadata.DispatchStatusDispatched
+		if status == metadata.JobStatusCompleted {
+			job.ExecutionStatus = metadata.ExecutionStatusCompleted
+		} else {
+			job.ExecutionStatus = metadata.ExecutionStatusCancelled
+		}
 		started := job.CreatedAt.Add(randomDuration(f, 1*time.Minute, 1*time.Hour))
 		completed := started.Add(randomDuration(f, 1*time.Second, 30*time.Minute))
 		job.StartedAt = &started
 		job.CompletedAt = &completed
 	case metadata.JobStatusFailed:
+		job.DispatchStatus = metadata.DispatchStatusDispatched
+		job.ExecutionStatus = metadata.ExecutionStatusFailed
 		if f.Bool() {
 			started := job.CreatedAt.Add(randomDuration(f, 1*time.Minute, 1*time.Hour))
 			completed := started.Add(randomDuration(f, 1*time.Second, 30*time.Minute))

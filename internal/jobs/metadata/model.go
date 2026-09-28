@@ -42,19 +42,21 @@ type JobError struct {
 // - `omitempty` - Omit field if zero value
 // - `json:"fieldName"` - JSON field name for API responses
 type JobMetadataModel struct {
-	ID          bson.ObjectID  `bson:"_id,omitempty" json:"id,omitempty"`
-	JobID       string         `bson:"jobId" json:"jobId"`
-	Name        string         `bson:"name" json:"name"`
-	Status      JobStatus      `bson:"status" json:"status"`
-	Priority    int            `bson:"priority" json:"priority"`
-	CreatedAt   time.Time      `bson:"createdAt" json:"createdAt"`
-	StartedAt   *time.Time     `bson:"startedAt,omitempty" json:"startedAt,omitempty"`
-	CompletedAt *time.Time     `bson:"completedAt,omitempty" json:"completedAt,omitempty"`
-	Payload     map[string]any `bson:"payload" json:"payload"`
-	Metadata    map[string]any `bson:"metadata" json:"metadata"`
-	Errors      []JobError     `bson:"errors,omitempty" json:"errors,omitempty"`
-	RetryCount  int            `bson:"retryCount" json:"retryCount"`
-	Tags        []string       `bson:"tags" json:"tags"`
+	ID              bson.ObjectID   `bson:"_id,omitempty" json:"id,omitempty"`
+	JobID           string          `bson:"jobId" json:"jobId"`
+	Name            string          `bson:"name" json:"name"`
+	Status          JobStatus       `bson:"status,omitempty" json:"status,omitempty"`
+	DispatchStatus  DispatchStatus  `bson:"dispatchStatus" json:"dispatchStatus"`
+	ExecutionStatus ExecutionStatus `bson:"executionStatus" json:"executionStatus"`
+	Priority        int             `bson:"priority" json:"priority"`
+	CreatedAt       time.Time       `bson:"createdAt" json:"createdAt"`
+	StartedAt       *time.Time      `bson:"startedAt,omitempty" json:"startedAt,omitempty"`
+	CompletedAt     *time.Time      `bson:"completedAt,omitempty" json:"completedAt,omitempty"`
+	Payload         map[string]any  `bson:"payload" json:"payload"`
+	Metadata        map[string]any  `bson:"metadata" json:"metadata"`
+	Errors          []JobError      `bson:"errors,omitempty" json:"errors,omitempty"`
+	RetryCount      int             `bson:"retryCount" json:"retryCount"`
+	Tags            []string        `bson:"tags" json:"tags"`
 
 	// Dispatch phase (embedded on job_metadata; set at enqueue)
 	Topic             string     `bson:"topic,omitempty" json:"topic,omitempty"`
@@ -77,6 +79,8 @@ func NewJobMetadata(jobID, name string, payload map[string]any) *JobMetadataMode
 		JobID:            jobID,
 		Name:             name,
 		Status:           JobStatusPendingDispatch,
+		DispatchStatus:   DispatchStatusPending,
+		ExecutionStatus:  ExecutionStatusNotStarted,
 		Priority:         5,
 		CreatedAt:        now,
 		Payload:          payload,
@@ -89,7 +93,7 @@ func NewJobMetadata(jobID, name string, payload map[string]any) *JobMetadataMode
 
 func (j *JobMetadataModel) GetJobID() string            { return j.JobID }
 func (j *JobMetadataModel) GetName() string             { return j.Name }
-func (j *JobMetadataModel) GetStatus() JobStatus        { return j.Status }
+func (j *JobMetadataModel) GetStatus() JobStatus        { return j.DisplayStatus() }
 func (j *JobMetadataModel) GetPriority() int            { return j.Priority }
 func (j *JobMetadataModel) GetCreatedAt() time.Time     { return j.CreatedAt }
 func (j *JobMetadataModel) GetStartedAt() *time.Time    { return j.StartedAt }
@@ -107,6 +111,32 @@ func (j *JobMetadataModel) GetLatestError() string {
 		return ""
 	}
 	return j.Errors[len(j.Errors)-1].Error
+}
+
+// DisplayStatus computes the external seven-value status from the two sub-states.
+// ExecutionStatus wins whenever it has moved past not_started.
+func (j *JobMetadataModel) DisplayStatus() JobStatus {
+	switch j.ExecutionStatus {
+	case ExecutionStatusRunning:
+		return JobStatusRunning
+	case ExecutionStatusCompleted:
+		return JobStatusCompleted
+	case ExecutionStatusFailed:
+		return JobStatusFailed
+	case ExecutionStatusCancelled:
+		return JobStatusCancelled
+	default:
+		switch j.DispatchStatus {
+		case DispatchStatusPending:
+			return JobStatusPendingDispatch
+		case DispatchStatusDispatched:
+			return JobStatusDispatched
+		case DispatchStatusFailed:
+			return JobStatusDispatchFailed
+		default:
+			return JobStatusPendingDispatch
+		}
+	}
 }
 
 // Validate checks if the job metadata is valid according to business rules
@@ -127,6 +157,14 @@ func (j *JobMetadataModel) Validate() error {
 		return errors.New("name must not exceed 100 characters")
 	}
 
+	if !j.DispatchStatus.IsValid() {
+		return fmt.Errorf("invalid dispatchStatus value: %s", j.DispatchStatus)
+	}
+
+	if !j.ExecutionStatus.IsValid() {
+		return fmt.Errorf("invalid executionStatus value: %s", j.ExecutionStatus)
+	}
+
 	if !j.Status.IsValid() {
 		return fmt.Errorf("invalid status value: %s", j.Status)
 	}
@@ -143,13 +181,13 @@ func (j *JobMetadataModel) Validate() error {
 		return errors.New("retryCount cannot be negative")
 	}
 
-	if j.Status.IsDispatchPhase() {
+	if j.DisplayStatus().IsDispatchPhase() {
 		if j.StartedAt != nil || j.CompletedAt != nil {
 			return errors.New("dispatch phase job must not have startedAt or completedAt")
 		}
 	}
 
-	if j.Status == JobStatusPendingDispatch && j.Topic == "" {
+	if j.DispatchStatus == DispatchStatusPending && j.Topic == "" {
 		return errors.New("pending_dispatch job must have topic")
 	}
 
@@ -157,11 +195,11 @@ func (j *JobMetadataModel) Validate() error {
 		return errors.New("dispatchAttempts cannot be negative")
 	}
 
-	if j.Status == JobStatusRunning && j.StartedAt == nil {
+	if j.ExecutionStatus == ExecutionStatusRunning && j.StartedAt == nil {
 		return errors.New("running job must have startedAt timestamp")
 	}
 
-	if j.Status == JobStatusCompleted || j.Status == JobStatusCancelled {
+	if j.ExecutionStatus == ExecutionStatusCompleted || j.ExecutionStatus == ExecutionStatusCancelled {
 		if j.StartedAt == nil {
 			return errors.New("completed or cancelled job must have startedAt timestamp")
 		}
@@ -170,7 +208,7 @@ func (j *JobMetadataModel) Validate() error {
 		}
 	}
 
-	if j.Status == JobStatusFailed {
+	if j.ExecutionStatus == ExecutionStatusFailed {
 		if j.CompletedAt == nil {
 			return errors.New("failed job must have completedAt timestamp")
 		}
@@ -182,29 +220,60 @@ func (j *JobMetadataModel) Validate() error {
 	return nil
 }
 
-// SetStatus updates the job status and related timestamps automatically
+// SetStatus updates the job status and related timestamps automatically.
+// Routes a single JobStatus value to the correct sub-field (DispatchStatus or ExecutionStatus)
+// and sets the appropriate timestamps.
 func (j *JobMetadataModel) SetStatus(status JobStatus) error {
-	if !j.Status.CanTransitionTo(status) {
-		return fmt.Errorf("cannot transition from %s to %s", j.Status, status)
+	current := j.DisplayStatus()
+	if !current.CanTransitionTo(status) {
+		return fmt.Errorf("cannot transition from %s to %s", current, status)
 	}
 
 	j.Status = status
 	now := time.Now()
 
 	switch status {
+	case JobStatusPendingDispatch:
+		j.DispatchStatus = DispatchStatusPending
+		if j.ExecutionStatus.IsTerminal() {
+			j.ExecutionStatus = ExecutionStatusNotStarted
+		}
+	case JobStatusDispatched:
+		j.DispatchStatus = DispatchStatusDispatched
+		if j.DispatchedAt == nil {
+			j.DispatchedAt = &now
+		}
+	case JobStatusDispatchFailed:
+		j.DispatchStatus = DispatchStatusFailed
 	case JobStatusRunning:
+		j.ExecutionStatus = ExecutionStatusRunning
 		if j.StartedAt == nil {
 			j.StartedAt = &now
 		}
-	case JobStatusCompleted, JobStatusFailed, JobStatusCancelled:
+	case JobStatusCompleted:
+		j.ExecutionStatus = ExecutionStatusCompleted
 		if j.StartedAt == nil {
 			j.StartedAt = &now
 		}
 		if j.CompletedAt == nil {
 			j.CompletedAt = &now
 		}
-	case JobStatusPendingDispatch, JobStatusDispatched, JobStatusDispatchFailed:
-		// dispatch phase: no execution timestamps
+	case JobStatusFailed:
+		j.ExecutionStatus = ExecutionStatusFailed
+		if j.StartedAt == nil {
+			j.StartedAt = &now
+		}
+		if j.CompletedAt == nil {
+			j.CompletedAt = &now
+		}
+	case JobStatusCancelled:
+		j.ExecutionStatus = ExecutionStatusCancelled
+		if j.StartedAt == nil {
+			j.StartedAt = &now
+		}
+		if j.CompletedAt == nil {
+			j.CompletedAt = &now
+		}
 	}
 
 	return nil
