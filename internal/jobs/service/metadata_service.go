@@ -348,9 +348,9 @@ func (s *MetadataService) RetryJob(ctx context.Context, jobID string) error {
 	executionNotStarted := metadata.ExecutionStatusNotStarted
 	zeroAttempts := 0
 	patch := metadata.UpdateJob{
-		Status:          &pendingDispatch,
-		DispatchStatus:  &dispatchPending,
-		ExecutionStatus: &executionNotStarted,
+		Status:           &pendingDispatch,
+		DispatchStatus:   &dispatchPending,
+		ExecutionStatus:  &executionNotStarted,
 		DispatchAttempts: &zeroAttempts,
 	}
 	if err := s.writer.Update(ctx, jobID, patch); err != nil {

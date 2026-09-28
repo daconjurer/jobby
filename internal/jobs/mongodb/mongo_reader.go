@@ -113,14 +113,88 @@ func (r *MongoJobsReader) GetJobsByStatus(ctx context.Context, status metadata.J
 	return r.List(ctx, f)
 }
 
-// GetPendingJobs lists jobs awaiting dispatch (pending_dispatch).
+// GetPendingJobs lists jobs awaiting dispatch (dispatchStatus: pending_dispatch).
 func (r *MongoJobsReader) GetPendingJobs(ctx context.Context, limit int) ([]metadata.JobMetadata, error) {
-	return r.GetJobsByStatus(ctx, metadata.JobStatusPendingDispatch, limit)
+	filter := metadata.ListFilter{
+		Limit:    limit,
+		SortBy:   "createdAt",
+		SortDesc: true,
+	}
+	query := buildListQuery(filter)
+	query["dispatchStatus"] = metadata.DispatchStatusPending
+
+	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}})
+	if limit > 0 {
+		opts.SetLimit(int64(limit))
+	}
+
+	cursor, err := r.metadataCollection.Find(ctx, query, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pending jobs: %w", err)
+	}
+	defer func() {
+		if cerr := cursor.Close(ctx); cerr != nil {
+			err = errors.Join(err, fmt.Errorf("close cursor: %w", cerr))
+		}
+	}()
+
+	var jobs []metadata.JobMetadata
+	for cursor.Next(ctx) {
+		var job metadata.JobMetadataModel
+		if decodeErr := cursor.Decode(&job); decodeErr != nil {
+			return nil, fmt.Errorf("failed to decode pending job: %w", decodeErr)
+		}
+		jobs = append(jobs, &job)
+	}
+	if err = cursor.Err(); err != nil {
+		return nil, fmt.Errorf("cursor error: %w", err)
+	}
+	if jobs == nil {
+		jobs = []metadata.JobMetadata{}
+	}
+	return jobs, err
 }
 
-// GetDispatchedJobs lists jobs on the broker awaiting executor pickup.
+// GetDispatchedJobs lists jobs on the broker awaiting executor pickup (dispatchStatus: dispatched).
 func (r *MongoJobsReader) GetDispatchedJobs(ctx context.Context, limit int) ([]metadata.JobMetadata, error) {
-	return r.GetJobsByStatus(ctx, metadata.JobStatusDispatched, limit)
+	filter := metadata.ListFilter{
+		Limit:    limit,
+		SortBy:   "createdAt",
+		SortDesc: true,
+	}
+	query := buildListQuery(filter)
+	query["dispatchStatus"] = metadata.DispatchStatusDispatched
+
+	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}})
+	if limit > 0 {
+		opts.SetLimit(int64(limit))
+	}
+
+	cursor, err := r.metadataCollection.Find(ctx, query, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dispatched jobs: %w", err)
+	}
+	defer func() {
+		if cerr := cursor.Close(ctx); cerr != nil {
+			err = errors.Join(err, fmt.Errorf("close cursor: %w", cerr))
+		}
+	}()
+
+	var jobs []metadata.JobMetadata
+	for cursor.Next(ctx) {
+		var job metadata.JobMetadataModel
+		if decodeErr := cursor.Decode(&job); decodeErr != nil {
+			return nil, fmt.Errorf("failed to decode dispatched job: %w", decodeErr)
+		}
+		jobs = append(jobs, &job)
+	}
+	if err = cursor.Err(); err != nil {
+		return nil, fmt.Errorf("cursor error: %w", err)
+	}
+	if jobs == nil {
+		jobs = []metadata.JobMetadata{}
+	}
+	return jobs, err
 }
 
 // GetLogs retrieves logs for a specific job with optional filtering.
