@@ -9,7 +9,8 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-func ptrStatus(s metadata.JobStatus) *metadata.JobStatus { return &s }
+func ptrDispatch(s metadata.DispatchStatus) *metadata.DispatchStatus     { return &s }
+func ptrExecution(s metadata.ExecutionStatus) *metadata.ExecutionStatus { return &s }
 
 func TestUpdateJob_BSONReflectLayout(t *testing.T) {
 	modelType := reflect.TypeFor[metadata.JobMetadataModel]()
@@ -65,12 +66,13 @@ func TestBSONPartialSet_UpdateJob(t *testing.T) {
 
 	t.Run("subset", func(t *testing.T) {
 		t.Parallel()
-		st := metadata.JobStatusRunning
-		m, err := bsonPartialSet(&metadata.UpdateJob{Status: &st, StartedAt: &when})
+		ds := metadata.DispatchStatusDispatched
+		es := metadata.ExecutionStatusRunning
+		m, err := bsonPartialSet(&metadata.UpdateJob{DispatchStatus: &ds, ExecutionStatus: &es, StartedAt: &when})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(m) != 2 || m["status"] != metadata.JobStatusRunning || !m["startedAt"].(time.Time).Equal(when) {
+		if len(m) != 3 || m["dispatchStatus"] != metadata.DispatchStatusDispatched || m["executionStatus"] != metadata.ExecutionStatusRunning || !m["startedAt"].(time.Time).Equal(when) {
 			t.Fatalf("got %+v", m)
 		}
 	})
@@ -80,30 +82,34 @@ func TestBSONPartialSet_UpdateJob(t *testing.T) {
 		payload := map[string]any{"k": 1}
 		meta := map[string]any{"a": "b"}
 		tags := []string{"x"}
+		ds := metadata.DispatchStatusDispatched
+		es := metadata.ExecutionStatusFailed
 		m, err := bsonPartialSet(&metadata.UpdateJob{
-			Status:      ptrStatus(metadata.JobStatusFailed),
-			Name:        &name,
-			Priority:    &pr,
-			StartedAt:   &when,
-			CompletedAt: &when,
-			Payload:     &payload,
-			Metadata:    &meta,
-			Errors:      &errors,
-			Tags:        &tags,
+			DispatchStatus:  ptrDispatch(ds),
+			ExecutionStatus: ptrExecution(es),
+			Name:            &name,
+			Priority:        &pr,
+			StartedAt:       &when,
+			CompletedAt:     &when,
+			Payload:         &payload,
+			Metadata:        &meta,
+			Errors:          &errors,
+			Tags:            &tags,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 		want := bson.M{
-			"status":      metadata.JobStatusFailed,
-			"name":        name,
-			"priority":    pr,
-			"startedAt":   when,
-			"completedAt": when,
-			"payload":     payload,
-			"metadata":    meta,
-			"errors":      errors,
-			"tags":        tags,
+			"dispatchStatus":  ds,
+			"executionStatus": es,
+			"name":            name,
+			"priority":        pr,
+			"startedAt":       when,
+			"completedAt":     when,
+			"payload":         payload,
+			"metadata":        meta,
+			"errors":          errors,
+			"tags":            tags,
 		}
 		if len(m) != len(want) {
 			t.Fatalf("len %d vs %d, got %+v want %+v", len(m), len(want), m, want)

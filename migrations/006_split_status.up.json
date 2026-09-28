@@ -1,0 +1,133 @@
+[
+  {
+    "collMod": "job_metadata",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["jobId", "name", "status", "dispatchStatus", "executionStatus", "createdAt"],
+        "properties": {
+          "jobId": {
+            "bsonType": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "name": { "bsonType": "string", "minLength": 1, "maxLength": 100 },
+          "status": {
+            "enum": [
+              "pending_dispatch",
+              "dispatched",
+              "dispatch_failed",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "description": "Deprecated display status; prefer dispatchStatus + executionStatus"
+          },
+          "dispatchStatus": {
+            "enum": ["pending_dispatch", "dispatched", "dispatch_failed"],
+            "description": "Dispatcher-owned state"
+          },
+          "executionStatus": {
+            "enum": ["not_started", "running", "completed", "failed", "cancelled"],
+            "description": "Executor-owned state"
+          },
+          "priority": { "bsonType": "int", "minimum": 0, "maximum": 10 },
+          "createdAt": { "bsonType": "date" },
+          "startedAt": { "bsonType": ["date", "null"] },
+          "completedAt": { "bsonType": ["date", "null"] },
+          "payload": { "bsonType": "object" },
+          "metadata": { "bsonType": "object" },
+          "error": { "bsonType": ["string", "null"] },
+          "retryCount": { "bsonType": "int", "minimum": 0 },
+          "tags": {
+            "bsonType": "array",
+            "items": { "bsonType": "string" },
+            "uniqueItems": true
+          },
+          "topic": { "bsonType": "string", "minLength": 1 },
+          "dispatchAttempts": { "bsonType": "int", "minimum": 0 },
+          "dispatchLastError": { "bsonType": ["string", "null"] },
+          "dispatchedAt": { "bsonType": ["date", "null"] }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "update": "job_metadata",
+    "updates": [
+      {
+        "q": {},
+        "u": [
+          {
+            "$set": {
+              "dispatchStatus": {
+                "$switch": {
+                  "branches": [
+                    { "case": { "$eq": ["$status", "pending_dispatch"] }, "then": "pending_dispatch" },
+                    { "case": { "$eq": ["$status", "dispatched"] }, "then": "dispatched" },
+                    { "case": { "$eq": ["$status", "dispatch_failed"] }, "then": "dispatch_failed" },
+                    { "case": { "$eq": ["$status", "running"] }, "then": "dispatched" },
+                    { "case": { "$eq": ["$status", "completed"] }, "then": "dispatched" },
+                    { "case": { "$eq": ["$status", "failed"] }, "then": "dispatched" },
+                    { "case": { "$eq": ["$status", "cancelled"] }, "then": "dispatched" }
+                  ],
+                  "default": "pending_dispatch"
+                }
+              },
+              "executionStatus": {
+                "$switch": {
+                  "branches": [
+                    { "case": { "$eq": ["$status", "pending_dispatch"] }, "then": "not_started" },
+                    { "case": { "$eq": ["$status", "dispatched"] }, "then": "not_started" },
+                    { "case": { "$eq": ["$status", "dispatch_failed"] }, "then": "not_started" },
+                    { "case": { "$eq": ["$status", "running"] }, "then": "running" },
+                    { "case": { "$eq": ["$status", "completed"] }, "then": "completed" },
+                    { "case": { "$eq": ["$status", "failed"] }, "then": "failed" },
+                    { "case": { "$eq": ["$status", "cancelled"] }, "then": "cancelled" }
+                  ],
+                  "default": "not_started"
+                }
+              }
+            }
+          }
+        ],
+        "multi": true
+      }
+    ]
+  },
+  {
+    "dropIndexes": "job_metadata",
+    "index": "idx_status"
+  },
+  {
+    "dropIndexes": "job_metadata",
+    "index": "idx_status_priority_created"
+  },
+  {
+    "dropIndexes": "job_metadata",
+    "index": "idx_pending_dispatch"
+  },
+  {
+    "createIndexes": "job_metadata",
+    "indexes": [
+      {
+        "key": { "dispatchStatus": 1 },
+        "name": "idx_dispatchStatus"
+      },
+      {
+        "key": { "executionStatus": 1 },
+        "name": "idx_executionStatus"
+      },
+      {
+        "key": { "dispatchStatus": 1, "priority": -1, "createdAt": 1 },
+        "name": "idx_dispatchStatus_priority_created"
+      },
+      {
+        "key": { "dispatchStatus": 1, "dispatchAttempts": 1, "createdAt": 1 },
+        "name": "idx_dispatch_pending"
+      }
+    ]
+  }
+]

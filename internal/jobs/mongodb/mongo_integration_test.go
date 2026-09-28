@@ -298,14 +298,22 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			if err := writer.Create(ctx, j); err != nil {
 				t.Fatalf("seed Create: %v", err)
 			}
-			run := metadata.JobStatusRunning
+			dispatched := metadata.DispatchStatusDispatched
+			run := metadata.ExecutionStatusRunning
 			tStarted := time.Now().UTC()
-			if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &run, StartedAt: &tStarted}); err != nil {
+			if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{
+				DispatchStatus:  &dispatched,
+				ExecutionStatus: &run,
+				StartedAt:       &tStarted,
+			}); err != nil {
 				t.Fatalf("Update seed running: %v", err)
 			}
-			done := metadata.JobStatusCompleted
+			done := metadata.ExecutionStatusCompleted
 			tCompleted := time.Now().UTC()
-			if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &done, CompletedAt: &tCompleted}); err != nil {
+			if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{
+				ExecutionStatus: &done,
+				CompletedAt:     &tCompleted,
+			}); err != nil {
 				t.Fatalf("Update seed completed: %v", err)
 			}
 		}
@@ -401,24 +409,29 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		run := metadata.JobStatusRunning
-		if err := writer.Update(ctx, "", metadata.UpdateJob{Status: &run}); !errors.Is(err, metadata.ErrJobNotFound) {
+		running := metadata.ExecutionStatusRunning
+		if err := writer.Update(ctx, "", metadata.UpdateJob{ExecutionStatus: &running}); !errors.Is(err, metadata.ErrJobNotFound) {
 			t.Fatalf("Update empty job id: %v", err)
 		}
-		bad := metadata.JobStatus("nope")
-		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &bad}); err == nil {
-			t.Fatal("invalid status value: want write error from collection validator")
+		bad := metadata.DispatchStatus("nope")
+		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{DispatchStatus: &bad}); err == nil {
+			t.Fatal("invalid dispatchStatus value: want write error from collection validator")
 		}
 
 		// No transition rules in the repository: pending -> completed is persisted if callers supply timestamps / schema permits.
-		done := metadata.JobStatusCompleted
+		dispatched := metadata.DispatchStatusDispatched
+		done := metadata.ExecutionStatusCompleted
 		tCompleted := time.Now().UTC()
-		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &done, CompletedAt: &tCompleted}); err != nil {
+		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{
+			DispatchStatus:  &dispatched,
+			ExecutionStatus: &done,
+			CompletedAt:     &tCompleted,
+		}); err != nil {
 			t.Fatalf("pending->completed: %v", err)
 		}
 		jm, err := reader.Get(ctx, j.JobID)
 		afterSkip := mustJobModel(t, jm, err)
-		if afterSkip.Status != metadata.JobStatusCompleted || afterSkip.CompletedAt == nil {
+		if afterSkip.GetStatus() != metadata.JobStatusCompleted || afterSkip.CompletedAt == nil {
 			t.Fatalf("after pending->completed: %+v", afterSkip)
 		}
 
@@ -426,9 +439,12 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		if err := writer.Create(ctx, j2); err != nil {
 			t.Fatal(err)
 		}
-		running := metadata.JobStatusRunning
 		tStarted := time.Now().UTC()
-		if err := writer.Update(ctx, j2.JobID, metadata.UpdateJob{Status: &running, StartedAt: &tStarted}); err != nil {
+		if err := writer.Update(ctx, j2.JobID, metadata.UpdateJob{
+			DispatchStatus:  &dispatched,
+			ExecutionStatus: &running,
+			StartedAt:       &tStarted,
+		}); err != nil {
 			t.Fatalf("pending->running: %v", err)
 		}
 		jmRun, err := reader.Get(ctx, j2.JobID)
@@ -437,9 +453,12 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatal("expected startedAt after running")
 		}
 
-		completed := metadata.JobStatusCompleted
+		completed := metadata.ExecutionStatusCompleted
 		tDone := time.Now().UTC()
-		if err := writer.Update(ctx, j2.JobID, metadata.UpdateJob{Status: &completed, CompletedAt: &tDone}); err != nil {
+		if err := writer.Update(ctx, j2.JobID, metadata.UpdateJob{
+			ExecutionStatus: &completed,
+			CompletedAt:     &tDone,
+		}); err != nil {
 			t.Fatalf("running->completed: %v", err)
 		}
 		jmDone, err := reader.Get(ctx, j2.JobID)
@@ -448,14 +467,14 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatal("expected completedAt")
 		}
 
-		revived := metadata.JobStatusRunning
-		if err := writer.Update(ctx, j2.JobID, metadata.UpdateJob{Status: &revived}); err != nil {
+		revived := metadata.ExecutionStatusRunning
+		if err := writer.Update(ctx, j2.JobID, metadata.UpdateJob{ExecutionStatus: &revived}); err != nil {
 			t.Fatalf("terminal->running (allowed at persistence layer): %v", err)
 		}
 		jmRev, err := reader.Get(ctx, j2.JobID)
 		got := mustJobModel(t, jmRev, err)
-		if got.Status != metadata.JobStatusRunning {
-			t.Fatalf("status = %s want running", got.Status)
+		if got.GetStatus() != metadata.JobStatusRunning {
+			t.Fatalf("status = %s want running", got.GetStatus())
 		}
 	})
 
@@ -466,9 +485,14 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		if err := writer.Create(ctx, j); err != nil {
 			t.Fatal(err)
 		}
-		running := metadata.JobStatusRunning
+		dispatched := metadata.DispatchStatusDispatched
+		running := metadata.ExecutionStatusRunning
 		tStarted := time.Now().UTC()
-		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &running, StartedAt: &tStarted}); err != nil {
+		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{
+			DispatchStatus:  &dispatched,
+			ExecutionStatus: &running,
+			StartedAt:       &tStarted,
+		}); err != nil {
 			t.Fatal(err)
 		}
 		firstJM, err := reader.Get(ctx, j.JobID)
@@ -481,9 +505,12 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 			t.Fatal("nil startedAt")
 		}
 
-		failed := metadata.JobStatusFailed
+		failed := metadata.ExecutionStatusFailed
 		tCompleted := time.Now().UTC()
-		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{Status: &failed, CompletedAt: &tCompleted}); err != nil {
+		if err := writer.Update(ctx, j.JobID, metadata.UpdateJob{
+			ExecutionStatus: &failed,
+			CompletedAt:     &tCompleted,
+		}); err != nil {
 			t.Fatal(err)
 		}
 
@@ -536,6 +563,8 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		t1 := time.Date(2026, 2, 1, 13, 0, 0, 0, time.UTC)
 		j.StartedAt = &t0
 		j.CompletedAt = &t1
+		j.DispatchStatus = metadata.DispatchStatusDispatched
+		j.ExecutionStatus = metadata.ExecutionStatusFailed
 		j.Status = metadata.JobStatusFailed
 		j.Errors = []metadata.JobError{{Type: metadata.JobErrorTypeExecution, RetryAttempt: 0, Error: "boom", Timestamp: t1}}
 		if err := writer.Create(ctx, j); err != nil {
@@ -656,8 +685,8 @@ func TestIntegration_MongoDispatchWriter(t *testing.T) {
 
 		jm, err := reader.Get(ctx, job.JobID)
 		got := mustJobModel(t, jm, err)
-		if got.Status != metadata.JobStatusDispatched {
-			t.Fatalf("status=%s want dispatched", got.Status)
+		if got.GetStatus() != metadata.JobStatusDispatched {
+			t.Fatalf("status=%s want dispatched", got.GetStatus())
 		}
 		if got.DispatchedAt == nil {
 			t.Fatal("expected dispatchedAt")
@@ -707,8 +736,8 @@ func TestIntegration_MongoDispatchWriter(t *testing.T) {
 		if got.DispatchLastError != "broker timeout" {
 			t.Fatalf("dispatchLastError=%q", got.DispatchLastError)
 		}
-		if got.Status != metadata.JobStatusPendingDispatch {
-			t.Fatalf("status=%s want pending_dispatch", got.Status)
+		if got.GetStatus() != metadata.JobStatusPendingDispatch {
+			t.Fatalf("status=%s want pending_dispatch", got.GetStatus())
 		}
 	})
 
@@ -749,8 +778,8 @@ func TestIntegration_MongoDispatchWriter(t *testing.T) {
 
 		jm, err := reader.Get(ctx, job.JobID)
 		got := mustJobModel(t, jm, err)
-		if got.Status != metadata.JobStatusDispatchFailed {
-			t.Fatalf("status=%s want dispatch_failed", got.Status)
+		if got.GetStatus() != metadata.JobStatusDispatchFailed {
+			t.Fatalf("status=%s want dispatch_failed", got.GetStatus())
 		}
 		if len(got.Errors) == 0 || got.GetLatestError() != "publish exhausted" {
 			t.Fatalf("error=%q, want 'publish exhausted'", got.GetLatestError())
@@ -832,8 +861,8 @@ func TestIntegration_MongoTerminalWriter(t *testing.T) {
 
 		jm, err := reader.Get(ctx, job.JobID)
 		got := mustJobModel(t, jm, err)
-		if got.Status != metadata.JobStatusCompleted {
-			t.Fatalf("status=%s want completed", got.Status)
+		if got.GetStatus() != metadata.JobStatusCompleted {
+			t.Fatalf("status=%s want completed", got.GetStatus())
 		}
 		if got.CompletedAt == nil {
 			t.Fatal("expected completedAt")
@@ -842,6 +871,8 @@ func TestIntegration_MongoTerminalWriter(t *testing.T) {
 
 	t.Run("CompleteIfRunning_miss", func(t *testing.T) {
 		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "terminal-cas", nil)
+		job.DispatchStatus = metadata.DispatchStatusDispatched
+		job.ExecutionStatus = metadata.ExecutionStatusFailed
 		job.Status = metadata.JobStatusFailed
 		now := time.Now().UTC()
 		job.StartedAt = &now
@@ -860,8 +891,8 @@ func TestIntegration_MongoTerminalWriter(t *testing.T) {
 
 		jm, err := reader.Get(ctx, job.JobID)
 		got := mustJobModel(t, jm, err)
-		if got.Status != metadata.JobStatusFailed {
-			t.Fatalf("status=%s want failed unchanged", got.Status)
+		if got.GetStatus() != metadata.JobStatusFailed {
+			t.Fatalf("status=%s want failed unchanged", got.GetStatus())
 		}
 	})
 
@@ -885,8 +916,8 @@ func TestIntegration_MongoTerminalWriter(t *testing.T) {
 
 		jm, err := reader.Get(ctx, job.JobID)
 		got := mustJobModel(t, jm, err)
-		if got.Status != metadata.JobStatusFailed {
-			t.Fatalf("status=%s want failed", got.Status)
+		if got.GetStatus() != metadata.JobStatusFailed {
+			t.Fatalf("status=%s want failed", got.GetStatus())
 		}
 		if len(got.Errors) != 1 || got.Errors[0].Error != "boom" {
 			t.Fatalf("errors=%v", got.Errors)
@@ -919,13 +950,15 @@ func TestIntegration_MongoTerminalWriter(t *testing.T) {
 
 		jm, err := reader.Get(ctx, job.JobID)
 		got := mustJobModel(t, jm, err)
-		if got.Status != metadata.JobStatusFailed {
-			t.Fatalf("status=%s want failed", got.Status)
+		if got.GetStatus() != metadata.JobStatusFailed {
+			t.Fatalf("status=%s want failed", got.GetStatus())
 		}
 	})
 
 	t.Run("FailIfNotTerminal_miss", func(t *testing.T) {
 		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "terminal-cas", nil)
+		job.DispatchStatus = metadata.DispatchStatusDispatched
+		job.ExecutionStatus = metadata.ExecutionStatusCompleted
 		job.Status = metadata.JobStatusCompleted
 		now := time.Now().UTC()
 		job.StartedAt = &now
@@ -950,8 +983,8 @@ func TestIntegration_MongoTerminalWriter(t *testing.T) {
 
 		jm, err := reader.Get(ctx, job.JobID)
 		got := mustJobModel(t, jm, err)
-		if got.Status != metadata.JobStatusCompleted {
-			t.Fatalf("status=%s want completed unchanged", got.Status)
+		if got.GetStatus() != metadata.JobStatusCompleted {
+			t.Fatalf("status=%s want completed unchanged", got.GetStatus())
 		}
 	})
 
@@ -999,14 +1032,14 @@ func TestIntegration_MongoTerminalWriter(t *testing.T) {
 				t.Fatalf("iteration %d: expected exactly one winner, complete=%v fail=%v", i, completeMatched, failMatched)
 			}
 
-			jm, err := reader.Get(ctx, job.JobID)
-			got := mustJobModel(t, jm, err)
-			if !got.Status.IsTerminal() {
-				t.Fatalf("iteration %d: status=%s want terminal", i, got.Status)
-			}
-			if got.Status != metadata.JobStatusCompleted && got.Status != metadata.JobStatusFailed {
-				t.Fatalf("iteration %d: unexpected terminal status %s", i, got.Status)
-			}
+		jm, err := reader.Get(ctx, job.JobID)
+		got := mustJobModel(t, jm, err)
+		if !got.GetStatus().IsTerminal() {
+			t.Fatalf("iteration %d: status=%s want terminal", i, got.GetStatus())
 		}
-	})
+		if got.GetStatus() != metadata.JobStatusCompleted && got.GetStatus() != metadata.JobStatusFailed {
+			t.Fatalf("iteration %d: unexpected terminal status %s", i, got.GetStatus())
+		}
+	}
+})
 }
