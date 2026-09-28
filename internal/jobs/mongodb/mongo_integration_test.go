@@ -1032,14 +1032,14 @@ func TestIntegration_MongoTerminalWriter(t *testing.T) {
 				t.Fatalf("iteration %d: expected exactly one winner, complete=%v fail=%v", i, completeMatched, failMatched)
 			}
 
-		jm, err := reader.Get(ctx, job.JobID)
-		got := mustJobModel(t, jm, err)
-		if !got.GetStatus().IsTerminal() {
-			t.Fatalf("iteration %d: status=%s want terminal", i, got.GetStatus())
+			jm, err := reader.Get(ctx, job.JobID)
+			got := mustJobModel(t, jm, err)
+			if !got.GetStatus().IsTerminal() {
+				t.Fatalf("iteration %d: status=%s want terminal", i, got.GetStatus())
+			}
+			if got.GetStatus() != metadata.JobStatusCompleted && got.GetStatus() != metadata.JobStatusFailed {
+				t.Fatalf("iteration %d: unexpected terminal status %s", i, got.GetStatus())
+			}
 		}
-		if got.GetStatus() != metadata.JobStatusCompleted && got.GetStatus() != metadata.JobStatusFailed {
-			t.Fatalf("iteration %d: unexpected terminal status %s", i, got.GetStatus())
-		}
-	}
-})
+	})
 }

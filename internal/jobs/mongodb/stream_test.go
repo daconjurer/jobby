@@ -26,7 +26,7 @@ func TestInsertPendingDispatchPipeline_MatchesInsertPendingDispatchOnly(t *testi
 	}
 
 	want := map[string]any{
-		"operationType":             "insert",
+		"operationType":               "insert",
 		"fullDocument.dispatchStatus": metadata.DispatchStatusPending,
 	}
 	got := make(map[string]any, len(match))

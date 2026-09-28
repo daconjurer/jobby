@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-func ptrDispatch(s metadata.DispatchStatus) *metadata.DispatchStatus     { return &s }
+func ptrDispatch(s metadata.DispatchStatus) *metadata.DispatchStatus    { return &s }
 func ptrExecution(s metadata.ExecutionStatus) *metadata.ExecutionStatus { return &s }
 
 func TestUpdateJob_BSONReflectLayout(t *testing.T) {
