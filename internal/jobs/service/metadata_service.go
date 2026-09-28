@@ -128,9 +128,11 @@ func (s *MetadataService) MarkJobDispatchFailed(ctx context.Context, jobID strin
 	return nil
 }
 
-// StartJob transitions a dispatched job to running status atomically.
+// StartJob claims a job for execution by moving executionStatus from not_started to running.
+// It intentionally does not check dispatchStatus, so a job can be started even if the dispatcher's
+// view has moved on.
 // Returns (matched, error) where matched=true means the transition occurred.
-// matched=false means job wasn't in dispatched state (duplicate delivery or already terminal).
+// matched=false means executionStatus was not not_started (duplicate delivery or already terminal).
 // Returns error only on infrastructure failures.
 func (s *MetadataService) StartJob(ctx context.Context, jobID string) (bool, error) {
 	now := time.Now()
@@ -214,8 +216,12 @@ func (s *MetadataService) CompleteJob(ctx context.Context, jobID string, result 
 	if job.GetStatus().IsTerminal() {
 		return metadata.ErrJobAlreadyTerminal
 	}
-	if job.GetStatus() == metadata.JobStatusDispatched {
-		return fmt.Errorf("cannot complete job %s in dispatched state", jobID)
+	model, err := metadata.AsJobModel(job)
+	if err != nil {
+		return err
+	}
+	if model.ExecutionStatus == metadata.ExecutionStatusNotStarted {
+		return fmt.Errorf("cannot complete job %s before execution has started", jobID)
 	}
 	return fmt.Errorf("unexpected job status %s for complete", job.GetStatus())
 }
@@ -268,15 +274,12 @@ func (s *MetadataService) FailJob(ctx context.Context, jobID string, jobErr erro
 	return fmt.Errorf("unexpected job status %s for fail", refreshed.GetStatus())
 }
 
-// CancelJob cancels a job if it's not already in a terminal state.
+// CancelJob cancels a job if its execution status is not already terminal.
+// It only writes executionStatus and leaves dispatchStatus untouched.
 func (s *MetadataService) CancelJob(ctx context.Context, jobID string, reason string) error {
 	job, err := s.reader.Get(ctx, jobID)
 	if err != nil {
 		return fmt.Errorf("failed to get job: %w", err)
-	}
-
-	if job.GetStatus().IsTerminal() {
-		return fmt.Errorf("cannot cancel job in %s state", job.GetStatus())
 	}
 
 	model, err := metadata.AsJobModel(job)
@@ -284,8 +287,18 @@ func (s *MetadataService) CancelJob(ctx context.Context, jobID string, reason st
 		return err
 	}
 
-	if err := model.SetStatus(metadata.JobStatusCancelled); err != nil {
-		return fmt.Errorf("invalid status transition: %w", err)
+	if model.ExecutionStatus.IsTerminal() {
+		return fmt.Errorf("cannot cancel job in %s state", model.ExecutionStatus)
+	}
+
+	now := time.Now()
+	model.ExecutionStatus = metadata.ExecutionStatusCancelled
+	model.Status = metadata.JobStatusCancelled
+	if model.StartedAt == nil {
+		model.StartedAt = &now
+	}
+	if model.CompletedAt == nil {
+		model.CompletedAt = &now
 	}
 
 	if reason != "" {
@@ -293,17 +306,23 @@ func (s *MetadataService) CancelJob(ctx context.Context, jobID string, reason st
 	}
 
 	st := model.Status
-	ds := model.DispatchStatus
 	es := model.ExecutionStatus
 	meta := model.Metadata
-	var completedAt *time.Time
+	var startedAt, completedAt *time.Time
+	if model.StartedAt != nil {
+		t := *model.StartedAt
+		startedAt = &t
+	}
 	if model.CompletedAt != nil {
 		t := *model.CompletedAt
 		completedAt = &t
 	}
 	patch := metadata.UpdateJob{
-		Status: &st, DispatchStatus: &ds, ExecutionStatus: &es,
-		CompletedAt: completedAt, Metadata: &meta,
+		Status:          &st,
+		ExecutionStatus: &es,
+		StartedAt:       startedAt,
+		CompletedAt:     completedAt,
+		Metadata:        &meta,
 	}
 	if err := s.writer.Update(ctx, jobID, patch); err != nil {
 		return fmt.Errorf("failed to update job: %w", err)
@@ -324,7 +343,8 @@ func (s *MetadataService) CancelJob(ctx context.Context, jobID string, reason st
 	return nil
 }
 
-// RetryJob increments retry count and resets job to pending.
+// RetryJob increments retry count and resets a failed job back to pending dispatch.
+// It requires executionStatus: failed and resets both sub-states plus execution timestamps and dispatch attempts.
 func (s *MetadataService) RetryJob(ctx context.Context, jobID string) error {
 	job, err := s.reader.Get(ctx, jobID)
 	if err != nil {
@@ -336,7 +356,7 @@ func (s *MetadataService) RetryJob(ctx context.Context, jobID string) error {
 		return err
 	}
 
-	if model.GetStatus() != metadata.JobStatusFailed {
+	if model.ExecutionStatus != metadata.ExecutionStatusFailed {
 		return fmt.Errorf("only failed jobs can be retried")
 	}
 
