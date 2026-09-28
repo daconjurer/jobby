@@ -5,25 +5,25 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-// statusToSubFields maps a display status to the underlying (dispatchStatus, executionStatus) pair.
-func statusToSubFields(status metadata.JobStatus) (metadata.DispatchStatus, metadata.ExecutionStatus) {
+// statusToSubFields maps a display status to the underlying CompositeStatus.
+func statusToSubFields(status metadata.JobStatus) metadata.CompositeStatus {
 	switch status {
 	case metadata.JobStatusPendingDispatch:
-		return metadata.DispatchStatusPending, metadata.ExecutionStatusNotStarted
+		return metadata.CompositeStatus{Dispatch: metadata.DispatchStatusPending, Execution: metadata.ExecutionStatusNotStarted}
 	case metadata.JobStatusDispatched:
-		return metadata.DispatchStatusDispatched, metadata.ExecutionStatusNotStarted
+		return metadata.CompositeStatus{Dispatch: metadata.DispatchStatusDispatched, Execution: metadata.ExecutionStatusNotStarted}
 	case metadata.JobStatusDispatchFailed:
-		return metadata.DispatchStatusFailed, metadata.ExecutionStatusNotStarted
+		return metadata.CompositeStatus{Dispatch: metadata.DispatchStatusFailed, Execution: metadata.ExecutionStatusNotStarted}
 	case metadata.JobStatusRunning:
-		return metadata.DispatchStatusDispatched, metadata.ExecutionStatusRunning
+		return metadata.CompositeStatus{Dispatch: metadata.DispatchStatusDispatched, Execution: metadata.ExecutionStatusRunning}
 	case metadata.JobStatusCompleted:
-		return metadata.DispatchStatusDispatched, metadata.ExecutionStatusCompleted
+		return metadata.CompositeStatus{Dispatch: metadata.DispatchStatusDispatched, Execution: metadata.ExecutionStatusCompleted}
 	case metadata.JobStatusFailed:
-		return metadata.DispatchStatusDispatched, metadata.ExecutionStatusFailed
+		return metadata.CompositeStatus{Dispatch: metadata.DispatchStatusDispatched, Execution: metadata.ExecutionStatusFailed}
 	case metadata.JobStatusCancelled:
-		return metadata.DispatchStatusDispatched, metadata.ExecutionStatusCancelled
+		return metadata.CompositeStatus{Dispatch: metadata.DispatchStatusDispatched, Execution: metadata.ExecutionStatusCancelled}
 	default:
-		return "", ""
+		return metadata.CompositeStatus{}
 	}
 }
 
@@ -68,24 +68,23 @@ func buildListQuery(filter metadata.ListFilter) bson.M {
 }
 
 // buildStatusOrQuery returns an $or array where each display status is translated to
-// its (dispatchStatus, executionStatus) pair. Multiple statuses that resolve to the
-// same pair are deduplicated.
+// its CompositeStatus. Multiple statuses that resolve to the same pair are deduplicated.
 func buildStatusOrQuery(statuses []metadata.JobStatus) bson.A {
 	seen := make(map[string]struct{}, len(statuses))
 	var conditions bson.A
 	for _, status := range statuses {
-		ds, es := statusToSubFields(status)
-		if ds == "" && es == "" {
+		pair := statusToSubFields(status)
+		if !pair.IsValid() {
 			continue
 		}
-		key := string(ds) + "\x00" + string(es)
+		key := string(pair.Dispatch) + "\x00" + string(pair.Execution)
 		if _, ok := seen[key]; ok {
 			continue
 		}
 		seen[key] = struct{}{}
 		conditions = append(conditions, bson.M{
-			"dispatchStatus":  ds,
-			"executionStatus": es,
+			"dispatchStatus":  pair.Dispatch,
+			"executionStatus": pair.Execution,
 		})
 	}
 	return conditions

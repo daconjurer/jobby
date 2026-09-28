@@ -235,3 +235,48 @@ func TestNewJobMetadata_Defaults(t *testing.T) {
 		t.Errorf("GetStatus() = %s, want %s", job.GetStatus(), JobStatusPendingDispatch)
 	}
 }
+
+func TestCompositeStatus_IsValid(t *testing.T) {
+	tests := []struct {
+		name string
+		pair CompositeStatus
+		want bool
+	}{
+		{"valid pending pair", CompositeStatus{DispatchStatusPending, ExecutionStatusNotStarted}, true},
+		{"valid running pair", CompositeStatus{DispatchStatusDispatched, ExecutionStatusRunning}, true},
+		{"invalid dispatch", CompositeStatus{DispatchStatus("nope"), ExecutionStatusNotStarted}, false},
+		{"invalid execution", CompositeStatus{DispatchStatusPending, ExecutionStatus("nope")}, false},
+		{"both invalid", CompositeStatus{DispatchStatus("nope"), ExecutionStatus("nope")}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.pair.IsValid(); got != tt.want {
+				t.Errorf("IsValid() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCompositeStatus_DisplayStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		pair CompositeStatus
+		want JobStatus
+	}{
+		{"pending pair", CompositeStatus{DispatchStatusPending, ExecutionStatusNotStarted}, JobStatusPendingDispatch},
+		{"dispatched pair", CompositeStatus{DispatchStatusDispatched, ExecutionStatusNotStarted}, JobStatusDispatched},
+		{"dispatch_failed pair", CompositeStatus{DispatchStatusFailed, ExecutionStatusNotStarted}, JobStatusDispatchFailed},
+		{"running pair", CompositeStatus{DispatchStatusDispatched, ExecutionStatusRunning}, JobStatusRunning},
+		{"completed pair", CompositeStatus{DispatchStatusDispatched, ExecutionStatusCompleted}, JobStatusCompleted},
+		{"failed pair", CompositeStatus{DispatchStatusDispatched, ExecutionStatusFailed}, JobStatusFailed},
+		{"cancelled pair", CompositeStatus{DispatchStatusDispatched, ExecutionStatusCancelled}, JobStatusCancelled},
+		{"executor claimed before dispatch confirm", CompositeStatus{DispatchStatusPending, ExecutionStatusRunning}, JobStatusRunning},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.pair.DisplayStatus(); got != tt.want {
+				t.Errorf("DisplayStatus() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}

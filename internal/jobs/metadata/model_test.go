@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -822,6 +823,31 @@ func TestAsJobModel_RejectsUnexpectedType(t *testing.T) {
 	_, err := AsJobModel(bogusJobMetadata{})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestJobMetadataModel_MarshalJSON_IncludesDisplayStatus(t *testing.T) {
+	job := NewJobMetadata("123e4567-e89b-12d3-a456-426614174000", "test-job", nil)
+	job.DispatchStatus = DispatchStatusDispatched
+	job.ExecutionStatus = ExecutionStatusCompleted
+
+	data, err := json.Marshal(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded["displayStatus"] != string(JobStatusCompleted) {
+		t.Fatalf("displayStatus=%v want completed", decoded["displayStatus"])
+	}
+	if decoded["dispatchStatus"] != string(DispatchStatusDispatched) {
+		t.Fatalf("dispatchStatus=%v want dispatched", decoded["dispatchStatus"])
+	}
+	if decoded["executionStatus"] != string(ExecutionStatusCompleted) {
+		t.Fatalf("executionStatus=%v want completed", decoded["executionStatus"])
 	}
 }
 

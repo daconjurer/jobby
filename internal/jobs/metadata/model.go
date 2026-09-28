@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -114,29 +115,8 @@ func (j *JobMetadataModel) GetLatestError() string {
 }
 
 // DisplayStatus computes the external seven-value status from the two sub-states.
-// ExecutionStatus wins whenever it has moved past not_started.
 func (j *JobMetadataModel) DisplayStatus() JobStatus {
-	switch j.ExecutionStatus {
-	case ExecutionStatusRunning:
-		return JobStatusRunning
-	case ExecutionStatusCompleted:
-		return JobStatusCompleted
-	case ExecutionStatusFailed:
-		return JobStatusFailed
-	case ExecutionStatusCancelled:
-		return JobStatusCancelled
-	default:
-		switch j.DispatchStatus {
-		case DispatchStatusPending:
-			return JobStatusPendingDispatch
-		case DispatchStatusDispatched:
-			return JobStatusDispatched
-		case DispatchStatusFailed:
-			return JobStatusDispatchFailed
-		default:
-			return JobStatusPendingDispatch
-		}
-	}
+	return CompositeStatus{Dispatch: j.DispatchStatus, Execution: j.ExecutionStatus}.DisplayStatus()
 }
 
 // Validate checks if the job metadata is valid according to business rules
@@ -354,6 +334,18 @@ func (j *JobMetadataModel) Duration() time.Duration {
 // Age returns how long ago the job was created
 func (j *JobMetadataModel) Age() time.Duration {
 	return time.Since(j.CreatedAt)
+}
+
+// MarshalJSON includes the computed displayStatus alongside the persisted fields.
+func (j *JobMetadataModel) MarshalJSON() ([]byte, error) {
+	type alias JobMetadataModel
+	return json.Marshal(&struct {
+		DisplayStatus JobStatus `json:"displayStatus"`
+		*alias
+	}{
+		DisplayStatus: j.DisplayStatus(),
+		alias:         (*alias)(j),
+	})
 }
 
 // AsJobModel returns the concrete model behind a JobMetadata value.
