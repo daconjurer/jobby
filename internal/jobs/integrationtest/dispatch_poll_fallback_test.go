@@ -45,8 +45,8 @@ func TestIntegration_DispatchPollFallback_CompletesWithoutChangeStream(t *testin
 	if err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
-	if model.Status != metadata.JobStatusPendingDispatch {
-		t.Fatalf("status=%s want pending_dispatch", model.Status)
+	if model.DisplayStatus() != metadata.JobStatusPendingDispatch {
+		t.Fatalf("status=%s want pending_dispatch", model.DisplayStatus())
 	}
 
 	subscription := fmt.Sprintf("integration-poll-%s", metadata.GenerateJobID())

@@ -50,7 +50,90 @@ type JobMetadata interface {
 	Validate() error
 }
 
+// DispatchStatus represents the dispatcher-owned state: publish and retry bookkeeping.
+type DispatchStatus string
+
+const (
+	DispatchStatusPending    DispatchStatus = "pending_dispatch"
+	DispatchStatusDispatched DispatchStatus = "dispatched"
+	DispatchStatusFailed     DispatchStatus = "dispatch_failed"
+)
+
+func (s DispatchStatus) String() string { return string(s) }
+func (s DispatchStatus) IsValid() bool {
+	switch s {
+	case DispatchStatusPending, DispatchStatusDispatched, DispatchStatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+func (s DispatchStatus) IsTerminal() bool { return false }
+
+func (s DispatchStatus) CanTransitionTo(target DispatchStatus) bool {
+	if !target.IsValid() || s == target {
+		return false
+	}
+	switch s {
+	case DispatchStatusPending:
+		return target == DispatchStatusDispatched || target == DispatchStatusFailed
+	case DispatchStatusFailed:
+		return target == DispatchStatusPending
+	case DispatchStatusDispatched:
+		return false
+	default:
+		return false
+	}
+}
+
+// ExecutionStatus represents the executor/cancel-owned state: run lifecycle.
+type ExecutionStatus string
+
+const (
+	ExecutionStatusNotStarted ExecutionStatus = "not_started"
+	ExecutionStatusRunning    ExecutionStatus = "running"
+	ExecutionStatusCompleted  ExecutionStatus = "completed"
+	ExecutionStatusFailed     ExecutionStatus = "failed"
+	ExecutionStatusCancelled  ExecutionStatus = "cancelled"
+)
+
+func (s ExecutionStatus) String() string { return string(s) }
+func (s ExecutionStatus) IsValid() bool {
+	switch s {
+	case ExecutionStatusNotStarted, ExecutionStatusRunning, ExecutionStatusCompleted, ExecutionStatusFailed, ExecutionStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+func (s ExecutionStatus) IsTerminal() bool {
+	return s == ExecutionStatusCompleted || s == ExecutionStatusFailed || s == ExecutionStatusCancelled
+}
+func (s ExecutionStatus) IsRunning() bool { return s == ExecutionStatusRunning }
+
+func (s ExecutionStatus) CanTransitionTo(target ExecutionStatus) bool {
+	if !target.IsValid() || s == target {
+		return false
+	}
+	if s.IsTerminal() {
+		return false
+	}
+	switch s {
+	case ExecutionStatusNotStarted:
+		return target == ExecutionStatusRunning ||
+			target == ExecutionStatusFailed ||
+			target == ExecutionStatusCancelled
+	case ExecutionStatusRunning:
+		return target == ExecutionStatusCompleted ||
+			target == ExecutionStatusFailed ||
+			target == ExecutionStatusCancelled
+	default:
+		return false
+	}
+}
+
 // JobStatus represents the full job lifecycle: dispatch (Mongo → Pulsar) then execution.
+// Kept as a display-value alias; the model now stores DispatchStatus + ExecutionStatus.
 type JobStatus string
 
 const (
@@ -137,6 +220,44 @@ func (s JobStatus) CanTransitionTo(target JobStatus) bool {
 	}
 }
 
+// CompositeStatus groups the dispatcher-owned and executor-owned states.
+// It is the source of truth for computing the external display status.
+type CompositeStatus struct {
+	Dispatch  DispatchStatus
+	Execution ExecutionStatus
+}
+
+// IsValid returns true when both partial statuses are valid.
+func (p CompositeStatus) IsValid() bool {
+	return p.Dispatch.IsValid() && p.Execution.IsValid()
+}
+
+// DisplayStatus computes the external seven-value status from the partial states.
+// ExecutionStatus wins whenever it has moved past not_started.
+func (p CompositeStatus) DisplayStatus() JobStatus {
+	switch p.Execution {
+	case ExecutionStatusRunning:
+		return JobStatusRunning
+	case ExecutionStatusCompleted:
+		return JobStatusCompleted
+	case ExecutionStatusFailed:
+		return JobStatusFailed
+	case ExecutionStatusCancelled:
+		return JobStatusCancelled
+	default:
+		switch p.Dispatch {
+		case DispatchStatusPending:
+			return JobStatusPendingDispatch
+		case DispatchStatusDispatched:
+			return JobStatusDispatched
+		case DispatchStatusFailed:
+			return JobStatusDispatchFailed
+		default:
+			return JobStatusPendingDispatch
+		}
+	}
+}
+
 // JobsReader defines read-only operations for job metadata and logs.
 type JobsReader interface {
 	Get(ctx context.Context, jobID string) (JobMetadata, error)
@@ -217,19 +338,21 @@ type ListFilter struct {
 // UpdateJob selects fields to set on job_metadata by job ID. Nil pointers omit that field from the update.
 // bson tags mirror JobMetadataModel (see bsonPartialSet). Use IncrementRetryCount for atomic retry bumps.
 type UpdateJob struct {
-	Status            *JobStatus      `bson:"status,omitempty"`
-	Name              *string         `bson:"name,omitempty"`
-	Priority          *int            `bson:"priority,omitempty"`
-	StartedAt         *time.Time      `bson:"startedAt,omitempty"`
-	CompletedAt       *time.Time      `bson:"completedAt,omitempty"`
-	Payload           *map[string]any `bson:"payload,omitempty"`
-	Metadata          *map[string]any `bson:"metadata,omitempty"`
-	Errors            *[]JobError     `bson:"errors,omitempty"`
-	Tags              *[]string       `bson:"tags,omitempty"`
-	Topic             *string         `bson:"topic,omitempty"`
-	DispatchAttempts  *int            `bson:"dispatchAttempts,omitempty"`
-	DispatchLastError *string         `bson:"dispatchLastError,omitempty"`
-	DispatchedAt      *time.Time      `bson:"dispatchedAt,omitempty"`
+	Status            *JobStatus       `bson:"status,omitempty"`
+	DispatchStatus    *DispatchStatus  `bson:"dispatchStatus,omitempty"`
+	ExecutionStatus   *ExecutionStatus `bson:"executionStatus,omitempty"`
+	Name              *string          `bson:"name,omitempty"`
+	Priority          *int             `bson:"priority,omitempty"`
+	StartedAt         *time.Time       `bson:"startedAt,omitempty"`
+	CompletedAt       *time.Time       `bson:"completedAt,omitempty"`
+	Payload           *map[string]any  `bson:"payload,omitempty"`
+	Metadata          *map[string]any  `bson:"metadata,omitempty"`
+	Errors            *[]JobError      `bson:"errors,omitempty"`
+	Tags              *[]string        `bson:"tags,omitempty"`
+	Topic             *string          `bson:"topic,omitempty"`
+	DispatchAttempts  *int             `bson:"dispatchAttempts,omitempty"`
+	DispatchLastError *string          `bson:"dispatchLastError,omitempty"`
+	DispatchedAt      *time.Time       `bson:"dispatchedAt,omitempty"`
 }
 
 // JobLog represents a log entry for job execution

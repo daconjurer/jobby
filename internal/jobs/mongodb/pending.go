@@ -27,7 +27,7 @@ func NewMongoPendingJobFetcher(coll *mongo.Collection) *PendingFetcher {
 // FetchPending returns projections on jobs that are still awaiting dispatch with attempts below maxAttempts.
 func (f *PendingFetcher) FetchPending(ctx context.Context, maxAttempts int, limit int) (jobs []dispatch.JobDispatchProjection, err error) {
 	filter := bson.M{
-		"status":           metadata.JobStatusPendingDispatch,
+		"dispatchStatus":   metadata.DispatchStatusPending,
 		"dispatchAttempts": bson.M{"$lt": maxAttempts},
 		"topic":            bson.M{"$exists": true, "$ne": ""},
 	}

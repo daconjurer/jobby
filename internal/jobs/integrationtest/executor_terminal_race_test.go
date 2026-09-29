@@ -164,8 +164,8 @@ func TestIntegration_Executor_ExternalFailDuringRun(t *testing.T) {
 	}
 
 	running := waitForJobStatus(t, eh.dispatch.metadataSvc, job.JobID, metadata.JobStatusRunning, 30*time.Second)
-	if running.Status != metadata.JobStatusRunning {
-		t.Fatalf("status=%s want running", running.Status)
+	if running.DisplayStatus() != metadata.JobStatusRunning {
+		t.Fatalf("status=%s want running", running.DisplayStatus())
 	}
 
 	const externalErr = "external fail during execution"
@@ -176,8 +176,8 @@ func TestIntegration_Executor_ExternalFailDuringRun(t *testing.T) {
 	close(blocking.proceed)
 
 	failed := waitForJobStatus(t, eh.dispatch.metadataSvc, job.JobID, metadata.JobStatusFailed, 30*time.Second)
-	if failed.Status != metadata.JobStatusFailed {
-		t.Fatalf("status=%s want failed after external fail during run", failed.Status)
+	if failed.DisplayStatus() != metadata.JobStatusFailed {
+		t.Fatalf("status=%s want failed after external fail during run", failed.DisplayStatus())
 	}
 	if len(failed.Errors) == 0 {
 		t.Fatal("expected external error in errors[]")
@@ -210,8 +210,8 @@ func TestIntegration_Executor_CompleteBeforeExternalFail(t *testing.T) {
 	}
 
 	completed := waitForJobStatus(t, eh.dispatch.metadataSvc, job.JobID, metadata.JobStatusCompleted, 30*time.Second)
-	if completed.Status != metadata.JobStatusCompleted {
-		t.Fatalf("status=%s want completed", completed.Status)
+	if completed.DisplayStatus() != metadata.JobStatusCompleted {
+		t.Fatalf("status=%s want completed", completed.DisplayStatus())
 	}
 
 	err := eh.dispatch.metadataSvc.FailJob(context.Background(), job.JobID, errors.New("too late"))
@@ -224,8 +224,8 @@ func TestIntegration_Executor_CompleteBeforeExternalFail(t *testing.T) {
 		t.Fatalf("GetJob: %v", err)
 	}
 	model := final.(*metadata.JobMetadataModel)
-	if model.Status != metadata.JobStatusCompleted {
-		t.Fatalf("status=%s want completed after rejected fail", model.Status)
+	if model.DisplayStatus() != metadata.JobStatusCompleted {
+		t.Fatalf("status=%s want completed after rejected fail", model.DisplayStatus())
 	}
 	if echo.execCount.Load() != 1 {
 		t.Fatalf("handler execCount=%d want 1", echo.execCount.Load())
@@ -268,8 +268,8 @@ func TestIntegration_Executor_TerminalRedeliverySkipsHandler(t *testing.T) {
 		t.Fatalf("GetJob: %v", err)
 	}
 	model := final.(*metadata.JobMetadataModel)
-	if model.Status != metadata.JobStatusCompleted {
-		t.Fatalf("status=%s want completed after redelivery skip", model.Status)
+	if model.DisplayStatus() != metadata.JobStatusCompleted {
+		t.Fatalf("status=%s want completed after redelivery skip", model.DisplayStatus())
 	}
 }
 
@@ -310,11 +310,12 @@ func TestIntegration_Executor_CompleteVsFailRace(t *testing.T) {
 	}
 
 	final := waitForJobStatusOrBeyond(t, eh.dispatch.metadataSvc, job.JobID, metadata.JobStatusCompleted, 30*time.Second)
-	if !final.Status.IsTerminal() {
-		t.Fatalf("status=%s want terminal after race", final.Status)
+	finalDisplay := final.DisplayStatus()
+	if !finalDisplay.IsTerminal() {
+		t.Fatalf("status=%s want terminal after race", finalDisplay)
 	}
-	if final.Status != metadata.JobStatusCompleted && final.Status != metadata.JobStatusFailed {
-		t.Fatalf("unexpected terminal status %s", final.Status)
+	if finalDisplay != metadata.JobStatusCompleted && finalDisplay != metadata.JobStatusFailed {
+		t.Fatalf("unexpected terminal status %s", finalDisplay)
 	}
 	if blocking.execCount.Load() != 1 {
 		t.Fatalf("handler execCount=%d want 1 after race", blocking.execCount.Load())

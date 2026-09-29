@@ -17,7 +17,7 @@ import (
 var insertPendingDispatchPipeline = mongo.Pipeline{
 	bson.D{{Key: "$match", Value: bson.D{
 		{Key: "operationType", Value: "insert"},
-		{Key: "fullDocument.status", Value: metadata.JobStatusPendingDispatch},
+		{Key: "fullDocument.dispatchStatus", Value: metadata.DispatchStatusPending},
 	}}},
 }
 

@@ -109,8 +109,8 @@ func TestIntegration_DispatchFailure_BrokerDownKeepsPendingAndRecordsAttempt(t *
 	}
 
 	got := waitForMinDispatchAttempts(t, metadataSvc, model.JobID, 1, 15*time.Second)
-	if got.Status != metadata.JobStatusPendingDispatch {
-		t.Fatalf("status=%s want pending_dispatch", got.Status)
+	if got.DisplayStatus() != metadata.JobStatusPendingDispatch {
+		t.Fatalf("status=%s want pending_dispatch", got.DisplayStatus())
 	}
 	if got.DispatchLastError == "" {
 		t.Fatal("expected dispatchLastError to be set")

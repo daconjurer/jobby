@@ -108,8 +108,9 @@ func markJobRunningForTest(t *testing.T, c *cli.CLI, jobID string) {
 	t.Helper()
 	ctx := context.Background()
 	now := time.Now().UTC()
-	running := metadata.JobStatusRunning
-	patch := metadata.UpdateJob{Status: &running, StartedAt: &now}
+	dispatch := metadata.DispatchStatusDispatched
+	execution := metadata.ExecutionStatusRunning
+	patch := metadata.UpdateJob{DispatchStatus: &dispatch, ExecutionStatus: &execution, StartedAt: &now}
 	if err := c.Writer.Update(ctx, jobID, patch); err != nil {
 		t.Fatalf("mark job running: %v", err)
 	}

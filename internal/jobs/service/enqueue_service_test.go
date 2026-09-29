@@ -61,8 +61,8 @@ func TestEnqueueService_EnqueueKnownJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.Status != metadata.JobStatusPendingDispatch {
-		t.Fatalf("status=%s", job.Status)
+	if job.DisplayStatus() != metadata.JobStatusPendingDispatch {
+		t.Fatalf("status=%s", job.DisplayStatus())
 	}
 	if job.Topic != testTopicAccountsJobs {
 		t.Fatalf("topic=%q", job.Topic)

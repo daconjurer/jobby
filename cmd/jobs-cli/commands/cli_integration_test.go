@@ -49,8 +49,8 @@ func TestIntegration_Cancel_pending_job(t *testing.T) {
 	if err := json.Unmarshal(getOut, &got); err != nil {
 		t.Fatalf("decode get: %v", err)
 	}
-	if got.Status != metadata.JobStatusCancelled {
-		t.Fatalf("status=%s want cancelled", got.Status)
+	if got.DisplayStatus() != metadata.JobStatusCancelled {
+		t.Fatalf("status=%s want cancelled", got.DisplayStatus())
 	}
 }
 

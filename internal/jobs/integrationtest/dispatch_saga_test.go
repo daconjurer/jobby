@@ -44,8 +44,8 @@ func TestIntegration_DispatchSaga_EnqueueToDispatched(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
-	if job.Status != metadata.JobStatusPendingDispatch {
-		t.Fatalf("status=%s want pending_dispatch", job.Status)
+	if job.DisplayStatus() != metadata.JobStatusPendingDispatch {
+		t.Fatalf("status=%s want pending_dispatch", job.DisplayStatus())
 	}
 	if job.Topic != wantTopic {
 		t.Fatalf("topic=%q want %q", job.Topic, wantTopic)
