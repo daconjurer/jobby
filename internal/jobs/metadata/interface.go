@@ -220,6 +220,44 @@ func (s JobStatus) CanTransitionTo(target JobStatus) bool {
 	}
 }
 
+// CompositeStatus groups the dispatcher-owned and executor-owned states.
+// It is the source of truth for computing the external display status.
+type CompositeStatus struct {
+	Dispatch  DispatchStatus
+	Execution ExecutionStatus
+}
+
+// IsValid returns true when both partial statuses are valid.
+func (p CompositeStatus) IsValid() bool {
+	return p.Dispatch.IsValid() && p.Execution.IsValid()
+}
+
+// DisplayStatus computes the external seven-value status from the partial states.
+// ExecutionStatus wins whenever it has moved past not_started.
+func (p CompositeStatus) DisplayStatus() JobStatus {
+	switch p.Execution {
+	case ExecutionStatusRunning:
+		return JobStatusRunning
+	case ExecutionStatusCompleted:
+		return JobStatusCompleted
+	case ExecutionStatusFailed:
+		return JobStatusFailed
+	case ExecutionStatusCancelled:
+		return JobStatusCancelled
+	default:
+		switch p.Dispatch {
+		case DispatchStatusPending:
+			return JobStatusPendingDispatch
+		case DispatchStatusDispatched:
+			return JobStatusDispatched
+		case DispatchStatusFailed:
+			return JobStatusDispatchFailed
+		default:
+			return JobStatusPendingDispatch
+		}
+	}
+}
+
 // JobsReader defines read-only operations for job metadata and logs.
 type JobsReader interface {
 	Get(ctx context.Context, jobID string) (JobMetadata, error)

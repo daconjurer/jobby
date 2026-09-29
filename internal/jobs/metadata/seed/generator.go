@@ -34,19 +34,21 @@ var (
 	logSources = []string{"worker", "service", "scheduler", "handler"}
 )
 
-type statusWeight struct {
-	status metadata.JobStatus
+type statusPairWeight struct {
+	pair   metadata.CompositeStatus
 	weight int
 }
 
-var statusDistribution = []statusWeight{
-	{metadata.JobStatusPendingDispatch, 5},
-	{metadata.JobStatusDispatched, 3},
-	{metadata.JobStatusDispatchFailed, 2},
-	{metadata.JobStatusRunning, 5},
-	{metadata.JobStatusCompleted, 70},
-	{metadata.JobStatusFailed, 10},
-	{metadata.JobStatusCancelled, 5},
+// statusDistribution weights produce the desired display-status distribution.
+// The display status is computed from the CompositeStatus.
+var statusDistribution = []statusPairWeight{
+	{metadata.CompositeStatus{Dispatch: metadata.DispatchStatusPending, Execution: metadata.ExecutionStatusNotStarted}, 5},
+	{metadata.CompositeStatus{Dispatch: metadata.DispatchStatusDispatched, Execution: metadata.ExecutionStatusNotStarted}, 3},
+	{metadata.CompositeStatus{Dispatch: metadata.DispatchStatusFailed, Execution: metadata.ExecutionStatusNotStarted}, 2},
+	{metadata.CompositeStatus{Dispatch: metadata.DispatchStatusDispatched, Execution: metadata.ExecutionStatusRunning}, 5},
+	{metadata.CompositeStatus{Dispatch: metadata.DispatchStatusDispatched, Execution: metadata.ExecutionStatusCompleted}, 70},
+	{metadata.CompositeStatus{Dispatch: metadata.DispatchStatusDispatched, Execution: metadata.ExecutionStatusFailed}, 10},
+	{metadata.CompositeStatus{Dispatch: metadata.DispatchStatusDispatched, Execution: metadata.ExecutionStatusCancelled}, 5},
 }
 
 func newFaker(seed int64) *gofakeit.Faker {
@@ -64,7 +66,7 @@ func randomSeed() uint64 {
 	return binary.LittleEndian.Uint64(b[:])
 }
 
-func pickStatus(f *gofakeit.Faker) metadata.JobStatus {
+func pickCompositeStatus(f *gofakeit.Faker) metadata.CompositeStatus {
 	total := 0
 	for _, sw := range statusDistribution {
 		total += sw.weight
@@ -73,10 +75,10 @@ func pickStatus(f *gofakeit.Faker) metadata.JobStatus {
 	for _, sw := range statusDistribution {
 		n -= sw.weight
 		if n <= 0 {
-			return sw.status
+			return sw.pair
 		}
 	}
-	return metadata.JobStatusCompleted
+	return metadata.CompositeStatus{Dispatch: metadata.DispatchStatusDispatched, Execution: metadata.ExecutionStatusCompleted}
 }
 
 func randomPayload(f *gofakeit.Faker) map[string]any {
@@ -134,48 +136,34 @@ func fakeTopic(f *gofakeit.Faker) string {
 	return fmt.Sprintf("persistent://public/default/seed/%s", f.Word())
 }
 
-func applyStatus(job *metadata.JobMetadataModel, status metadata.JobStatus, f *gofakeit.Faker) {
-	job.Status = status
+func applyCompositeStatus(job *metadata.JobMetadataModel, pair metadata.CompositeStatus, f *gofakeit.Faker) {
+	job.DispatchStatus = pair.Dispatch
+	job.ExecutionStatus = pair.Execution
+	job.Status = pair.DisplayStatus()
 
-	switch status {
-	case metadata.JobStatusPendingDispatch:
-		job.DispatchStatus = metadata.DispatchStatusPending
-		job.ExecutionStatus = metadata.ExecutionStatusNotStarted
+	switch pair.Dispatch {
+	case metadata.DispatchStatusPending:
 		job.Topic = fakeTopic(f)
-		return
-	case metadata.JobStatusDispatched:
-		job.DispatchStatus = metadata.DispatchStatusDispatched
-		job.ExecutionStatus = metadata.ExecutionStatusNotStarted
+	case metadata.DispatchStatusDispatched:
 		job.Topic = fakeTopic(f)
 		dispatched := job.CreatedAt.Add(randomDuration(f, 1*time.Second, 30*time.Minute))
 		job.DispatchedAt = &dispatched
-		return
-	case metadata.JobStatusDispatchFailed:
-		job.DispatchStatus = metadata.DispatchStatusFailed
-		job.ExecutionStatus = metadata.ExecutionStatusNotStarted
+	case metadata.DispatchStatusFailed:
 		job.Topic = fakeTopic(f)
 		job.DispatchAttempts = f.IntRange(1, 5)
 		job.DispatchLastError = f.Sentence(f.IntRange(3, 8))
-		return
-	case metadata.JobStatusRunning:
-		job.DispatchStatus = metadata.DispatchStatusDispatched
-		job.ExecutionStatus = metadata.ExecutionStatusRunning
+	}
+
+	switch pair.Execution {
+	case metadata.ExecutionStatusRunning:
 		started := job.CreatedAt.Add(randomDuration(f, 1*time.Minute, 2*time.Hour))
 		job.StartedAt = &started
-	case metadata.JobStatusCompleted, metadata.JobStatusCancelled:
-		job.DispatchStatus = metadata.DispatchStatusDispatched
-		if status == metadata.JobStatusCompleted {
-			job.ExecutionStatus = metadata.ExecutionStatusCompleted
-		} else {
-			job.ExecutionStatus = metadata.ExecutionStatusCancelled
-		}
+	case metadata.ExecutionStatusCompleted, metadata.ExecutionStatusCancelled:
 		started := job.CreatedAt.Add(randomDuration(f, 1*time.Minute, 1*time.Hour))
 		completed := started.Add(randomDuration(f, 1*time.Second, 30*time.Minute))
 		job.StartedAt = &started
 		job.CompletedAt = &completed
-	case metadata.JobStatusFailed:
-		job.DispatchStatus = metadata.DispatchStatusDispatched
-		job.ExecutionStatus = metadata.ExecutionStatusFailed
+	case metadata.ExecutionStatusFailed:
 		if f.Bool() {
 			started := job.CreatedAt.Add(randomDuration(f, 1*time.Minute, 1*time.Hour))
 			completed := started.Add(randomDuration(f, 1*time.Second, 30*time.Minute))
@@ -228,10 +216,10 @@ func BuildJob(f *gofakeit.Faker, maxAge time.Duration) (*metadata.JobMetadataMod
 	job.Tags = randomTags(f)
 	job.Metadata = randomMetadata(f)
 
-	status := pickStatus(f)
-	applyStatus(job, status, f)
+	pair := pickCompositeStatus(f)
+	applyCompositeStatus(job, pair, f)
 
-	if status == metadata.JobStatusFailed || status == metadata.JobStatusCancelled {
+	if pair.Execution == metadata.ExecutionStatusFailed || pair.Execution == metadata.ExecutionStatusCancelled {
 		job.RetryCount = f.IntRange(0, 3)
 	} else {
 		job.RetryCount = f.IntRange(0, 1)
