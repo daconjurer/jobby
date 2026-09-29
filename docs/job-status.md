@@ -54,6 +54,6 @@ stateDiagram-v2
 
 ## Superseded by a status split
 
-The transitions `pending_dispatch` to `dispatched` and `dispatched` to `running` were written by two different services (dispatcher and executor), which created a race described in [dispatch-executor-race.md](./architecture/dispatch-executor-race.md).
+The transitions `pending_dispatch` to `dispatched` and `dispatched` to `running` were written by two different services (dispatcher and executor), which created a race because both services updated the same field.
 The split design, [dispatch-execution-status-split.md](../planning/dispatch-execution-status-split/dispatch-execution-status-split.md), replaced the single `status` field with two independently-owned fields.
 This document is kept for historical context only.
