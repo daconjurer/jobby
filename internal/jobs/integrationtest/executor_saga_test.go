@@ -95,8 +95,8 @@ func TestIntegration_ExecutorSaga_DispatchedToCompleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
-	if job.Status != metadata.JobStatusPendingDispatch {
-		t.Fatalf("status=%s want pending_dispatch", job.Status)
+	if job.DisplayStatus() != metadata.JobStatusPendingDispatch {
+		t.Fatalf("status=%s want pending_dispatch", job.DisplayStatus())
 	}
 
 	// Wait for handler to be executed (job may complete very quickly)

@@ -182,8 +182,9 @@ func markJobRunningForIntegrationTest(t *testing.T, writer *mongodb.MongoJobsWri
 	t.Helper()
 	ctx := context.Background()
 	now := time.Now().UTC()
-	running := metadata.JobStatusRunning
-	patch := metadata.UpdateJob{Status: &running, StartedAt: &now}
+	dispatch := metadata.DispatchStatusDispatched
+	execution := metadata.ExecutionStatusRunning
+	patch := metadata.UpdateJob{DispatchStatus: &dispatch, ExecutionStatus: &execution, StartedAt: &now}
 	if err := writer.Update(ctx, jobID, patch); err != nil {
 		t.Fatalf("mark job running: %v", err)
 	}
@@ -256,8 +257,8 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		if created.Topic != "persistent://public/default/accounts/jobs" {
 			t.Fatalf("topic=%q", created.Topic)
 		}
-		if created.Status != metadata.JobStatusPendingDispatch {
-			t.Fatalf("status=%s want pending_dispatch", created.Status)
+		if created.DisplayStatus() != metadata.JobStatusPendingDispatch {
+			t.Fatalf("status=%s want pending_dispatch", created.DisplayStatus())
 		}
 
 		req, err := http.NewRequest(http.MethodGet, apiJobs(baseURL, "/", created.JobID), nil)
@@ -513,8 +514,8 @@ func TestIntegration_JobsHandler_HTTP(t *testing.T) {
 		}
 		var got metadata.JobMetadataModel
 		mustDecodeJSON(t, bytes.NewReader(gotBody), &got)
-		if got.Status != metadata.JobStatusPendingDispatch {
-			t.Fatalf("after retry status=%s want pending_dispatch", got.Status)
+		if got.DisplayStatus() != metadata.JobStatusPendingDispatch {
+			t.Fatalf("after retry status=%s want pending_dispatch", got.DisplayStatus())
 		}
 		if len(got.Errors) != 1 || got.Errors[0].Error != "boom" {
 			t.Fatalf("after retry errors=%v want preserved boom entry", got.Errors)

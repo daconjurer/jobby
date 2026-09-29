@@ -37,8 +37,8 @@ func TestIntegration_Enqueue_and_Get_roundTrip(t *testing.T) {
 	if created.Topic != "persistent://public/default/accounts/jobs" {
 		t.Fatalf("topic=%q", created.Topic)
 	}
-	if created.Status != metadata.JobStatusPendingDispatch {
-		t.Fatalf("status=%s want pending_dispatch", created.Status)
+	if created.DisplayStatus() != metadata.JobStatusPendingDispatch {
+		t.Fatalf("status=%s want pending_dispatch", created.DisplayStatus())
 	}
 	if created.Priority != 7 {
 		t.Fatalf("priority=%d want 7", created.Priority)
@@ -155,8 +155,8 @@ func TestIntegration_Fail_cancel_retry_flow(t *testing.T) {
 	if err := json.Unmarshal(getOut, &got); err != nil {
 		t.Fatalf("decode get: %v", err)
 	}
-	if got.Status != metadata.JobStatusPendingDispatch {
-		t.Fatalf("after retry status=%s want pending_dispatch", got.Status)
+	if got.DisplayStatus() != metadata.JobStatusPendingDispatch {
+		t.Fatalf("after retry status=%s want pending_dispatch", got.DisplayStatus())
 	}
 	if got.RetryCount < 1 {
 		t.Fatalf("retryCount=%d want at least 1", got.RetryCount)

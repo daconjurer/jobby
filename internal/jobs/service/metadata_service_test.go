@@ -314,7 +314,6 @@ func TestMetadataService_CreateJob_ValidationFailure(t *testing.T) {
 func TestMetadataService_RetryJob_RejectsNonFailedExecutionStatus(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
-	job.Status = metadata.JobStatusPendingDispatch
 	job.DispatchStatus = metadata.DispatchStatusPending
 	job.ExecutionStatus = metadata.ExecutionStatusNotStarted
 	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
@@ -329,7 +328,6 @@ func TestMetadataService_RetryJob_ResetsBothSubStates(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
-	job.Status = metadata.JobStatusFailed
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusFailed
 	job.DispatchAttempts = 3
@@ -359,7 +357,6 @@ func TestMetadataService_RetryJob_ResetsBothSubStates(t *testing.T) {
 func TestMetadataService_CancelJob_RejectsTerminalExecutionStatus(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
-	job.Status = metadata.JobStatusFailed
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusFailed
 	svc := NewMetadataService(stubJobsReader{job: job}, &recordingJobsWriter{})
@@ -373,7 +370,6 @@ func TestMetadataService_CancelJob_RejectsTerminalExecutionStatus(t *testing.T) 
 func TestMetadataService_CancelJob_DoesNotWriteDispatchStatus(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
-	job.Status = metadata.JobStatusDispatched
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusNotStarted
 	writer := &recordingJobsWriter{}
@@ -397,7 +393,6 @@ func TestMetadataService_CancelJob_DoesNotWriteDispatchStatus(t *testing.T) {
 func TestMetadataService_CancelJob_CanCancelPendingDispatch(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
-	job.Status = metadata.JobStatusPendingDispatch
 	job.DispatchStatus = metadata.DispatchStatusPending
 	job.ExecutionStatus = metadata.ExecutionStatusNotStarted
 	writer := &recordingJobsWriter{}
@@ -438,7 +433,8 @@ func TestMetadataService_StartJob_WritesLogWhenMatched(t *testing.T) {
 func TestMetadataService_StartJob_SkipsLogWhenNotMatched(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "load-products", nil)
-	job.Status = metadata.JobStatusRunning
+	job.DispatchStatus = metadata.DispatchStatusDispatched
+	job.ExecutionStatus = metadata.ExecutionStatusRunning
 	writer := &recordingJobsWriter{markRunningMatched: false}
 	svc := NewMetadataService(stubJobsReader{job: job}, writer)
 
@@ -475,7 +471,6 @@ func TestMetadataService_StartJob_HandlesGetErrorOnDuplicateDelivery(t *testing.
 func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromFailed(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
-	job.Status = metadata.JobStatusFailed
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusFailed
 	now := time.Now()
@@ -494,7 +489,6 @@ func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromFailed(t *t
 func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromCompleted(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
-	job.Status = metadata.JobStatusCompleted
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusCompleted
 	now := time.Now()
@@ -512,7 +506,6 @@ func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromCompleted(t
 func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromCancelled(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
-	job.Status = metadata.JobStatusCancelled
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusCancelled
 	now := time.Now()
@@ -530,7 +523,6 @@ func TestMetadataService_CompleteJob_ReturnsErrJobAlreadyTerminalFromCancelled(t
 func TestMetadataService_CompleteJob_RejectsNotStartedExecutionStatus(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
-	job.Status = metadata.JobStatusDispatched
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusNotStarted
 
@@ -548,7 +540,6 @@ func TestMetadataService_CompleteJob_RejectsNotStartedExecutionStatus(t *testing
 func TestMetadataService_CompleteJob_SucceedsFromRunning(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
-	job.Status = metadata.JobStatusRunning
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusRunning
 	now := time.Now()
@@ -572,7 +563,6 @@ func TestMetadataService_CompleteJob_SucceedsFromRunning(t *testing.T) {
 func TestMetadataService_FailJob_ReturnsErrJobAlreadyTerminalFromFailed(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
-	job.Status = metadata.JobStatusFailed
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusFailed
 	now := time.Now()
@@ -591,7 +581,6 @@ func TestMetadataService_FailJob_ReturnsErrJobAlreadyTerminalFromFailed(t *testi
 func TestMetadataService_FailJob_ReturnsErrJobAlreadyTerminalFromCompleted(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
-	job.Status = metadata.JobStatusCompleted
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusCompleted
 	now := time.Now()
@@ -609,7 +598,6 @@ func TestMetadataService_FailJob_ReturnsErrJobAlreadyTerminalFromCompleted(t *te
 func TestMetadataService_FailJob_ReturnsErrJobAlreadyTerminalFromCancelled(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
-	job.Status = metadata.JobStatusCancelled
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusCancelled
 	now := time.Now()
@@ -627,7 +615,6 @@ func TestMetadataService_FailJob_ReturnsErrJobAlreadyTerminalFromCancelled(t *te
 func TestMetadataService_FailJob_SucceedsFromRunning(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
-	job.Status = metadata.JobStatusRunning
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusRunning
 	now := time.Now()
@@ -655,7 +642,6 @@ func TestMetadataService_FailJob_SucceedsFromRunning(t *testing.T) {
 func TestMetadataService_FailJob_SucceedsFromDispatched(t *testing.T) {
 	ctx := context.Background()
 	job := metadata.NewJobMetadata(metadata.GenerateJobID(), "test-job", nil)
-	job.Status = metadata.JobStatusDispatched
 	job.DispatchStatus = metadata.DispatchStatusDispatched
 	job.ExecutionStatus = metadata.ExecutionStatusNotStarted
 	writer := &recordingJobsWriter{failIfNotTerminalMatched: true}

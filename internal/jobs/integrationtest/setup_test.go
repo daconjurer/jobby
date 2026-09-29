@@ -243,7 +243,7 @@ func waitForJobStatus(tb testing.TB, svc *service.MetadataService, jobID string,
 		job, err := svc.GetJob(context.Background(), jobID)
 		if err == nil {
 			model := job.(*metadata.JobMetadataModel)
-			if model.Status == want {
+			if model.DisplayStatus() == want {
 				return model
 			}
 		}
@@ -254,7 +254,7 @@ func waitForJobStatus(tb testing.TB, svc *service.MetadataService, jobID string,
 		tb.Fatalf("GetJob(%s): %v", jobID, err)
 	}
 	model := job.(*metadata.JobMetadataModel)
-	tb.Fatalf("job %s status=%s want %s after %s", jobID, model.Status, want, timeout)
+	tb.Fatalf("job %s status=%s want %s after %s", jobID, model.DisplayStatus(), want, timeout)
 	return nil
 }
 
@@ -267,8 +267,9 @@ func waitForJobStatusOrBeyond(tb testing.TB, svc *service.MetadataService, jobID
 		job, err := svc.GetJob(context.Background(), jobID)
 		if err == nil {
 			model := job.(*metadata.JobMetadataModel)
+			display := model.DisplayStatus()
 			// Accept if at target status or any terminal status
-			if model.Status == minStatus || model.Status.IsTerminal() {
+			if display == minStatus || display.IsTerminal() {
 				return model
 			}
 		}
@@ -279,7 +280,7 @@ func waitForJobStatusOrBeyond(tb testing.TB, svc *service.MetadataService, jobID
 		tb.Fatalf("GetJob(%s): %v", jobID, err)
 	}
 	model := job.(*metadata.JobMetadataModel)
-	tb.Fatalf("job %s status=%s want at least %s after %s", jobID, model.Status, minStatus, timeout)
+	tb.Fatalf("job %s status=%s want at least %s after %s", jobID, model.DisplayStatus(), minStatus, timeout)
 	return nil
 }
 

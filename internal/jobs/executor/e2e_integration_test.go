@@ -93,8 +93,8 @@ func TestE2EIntegration_EchoJobExecution(t *testing.T) {
 		}
 
 		finalJob := getJob(t, client, baseURL, jobID)
-		if finalJob.Status != metadata.JobStatusCompleted {
-			t.Fatalf("final status=%s want completed, job=%+v", finalJob.Status, finalJob)
+		if finalJob.DisplayStatus() != metadata.JobStatusCompleted {
+			t.Fatalf("final status=%s want completed, job=%+v", finalJob.DisplayStatus(), finalJob)
 		}
 
 		t.Logf("Job %s completed successfully: %+v", jobID, finalJob)
@@ -144,8 +144,8 @@ func TestE2EIntegration_EchoJobExecution(t *testing.T) {
 		}
 
 		finalJob := getJob(t, client, baseURL, jobID)
-		if finalJob.Status != metadata.JobStatusFailed {
-			t.Fatalf("final status=%s want failed, job=%+v", finalJob.Status, finalJob)
+		if finalJob.DisplayStatus() != metadata.JobStatusFailed {
+			t.Fatalf("final status=%s want failed, job=%+v", finalJob.DisplayStatus(), finalJob)
 		}
 		if len(finalJob.Errors) == 0 {
 			t.Fatalf("expected error message in failed job, got empty errors array")
@@ -254,17 +254,18 @@ func waitForJobStatus(ctx context.Context, t *testing.T, client *http.Client, ba
 			}
 
 			job := getJob(t, client, baseURL, jobID)
-			t.Logf("Job %s status: %s", jobID, job.Status)
+			display := job.DisplayStatus()
+			t.Logf("Job %s status: %s", jobID, display)
 
-			if job.Status == targetStatus {
+			if display == targetStatus {
 				return true
 			}
 
-			if job.Status == metadata.JobStatusFailed && targetStatus != metadata.JobStatusFailed {
+			if display == metadata.JobStatusFailed && targetStatus != metadata.JobStatusFailed {
 				t.Fatalf("job %s failed unexpectedly: error=%s", jobID, job.GetLatestError())
 			}
 
-			if job.Status == metadata.JobStatusCancelled {
+			if display == metadata.JobStatusCancelled {
 				t.Fatalf("job %s was cancelled", jobID)
 			}
 		}

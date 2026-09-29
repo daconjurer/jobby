@@ -565,7 +565,6 @@ func TestIntegration_MongoJobsPersistence(t *testing.T) {
 		j.CompletedAt = &t1
 		j.DispatchStatus = metadata.DispatchStatusDispatched
 		j.ExecutionStatus = metadata.ExecutionStatusFailed
-		j.Status = metadata.JobStatusFailed
 		j.Errors = []metadata.JobError{{Type: metadata.JobErrorTypeExecution, RetryAttempt: 0, Error: "boom", Timestamp: t1}}
 		if err := writer.Create(ctx, j); err != nil {
 			t.Fatal(err)
@@ -873,7 +872,6 @@ func TestIntegration_MongoTerminalWriter(t *testing.T) {
 		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "terminal-cas", nil)
 		job.DispatchStatus = metadata.DispatchStatusDispatched
 		job.ExecutionStatus = metadata.ExecutionStatusFailed
-		job.Status = metadata.JobStatusFailed
 		now := time.Now().UTC()
 		job.StartedAt = &now
 		job.CompletedAt = &now
@@ -959,7 +957,6 @@ func TestIntegration_MongoTerminalWriter(t *testing.T) {
 		job := metadata.NewJobMetadata(metadata.GenerateJobID(), "terminal-cas", nil)
 		job.DispatchStatus = metadata.DispatchStatusDispatched
 		job.ExecutionStatus = metadata.ExecutionStatusCompleted
-		job.Status = metadata.JobStatusCompleted
 		now := time.Now().UTC()
 		job.StartedAt = &now
 		job.CompletedAt = &now
