@@ -122,12 +122,13 @@ func ensureJobsIndexes(ctx context.Context, metadataColl, logsColl *mongo.Collec
 	metadataRequired := []string{
 		"idx_jobId_unique",
 		"idx_name",
-		"idx_status",
+		"idx_dispatchStatus",
+		"idx_executionStatus",
 		"idx_createdAt_desc",
 		"idx_tags",
 		"idx_name_status",
-		"idx_status_priority_created",
-		"idx_pending_dispatch",
+		"idx_dispatchStatus_priority_created",
+		"idx_dispatch_pending",
 	}
 	metaOK, err := verifyRequiredIndexesPresent(ctx, metadataColl, metadataRequired)
 	if err != nil {

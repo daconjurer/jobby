@@ -37,12 +37,13 @@ func TestOutputFormat_Table(t *testing.T) {
 		var buf strings.Builder
 		jobs := []metadata.JobMetadata{
 			&metadata.JobMetadataModel{
-				JobID:      "00000000-0000-0000-0000-000000000001",
-				Name:       "demo",
-				Status:     metadata.JobStatusPendingDispatch,
-				Priority:   7,
-				RetryCount: 0,
-				CreatedAt:  time.Date(2026, 5, 28, 12, 0, 0, 0, time.UTC),
+				JobID:           "00000000-0000-0000-0000-000000000001",
+				Name:            "demo",
+				DispatchStatus:  metadata.DispatchStatusPending,
+				ExecutionStatus: metadata.ExecutionStatusNotStarted,
+				Priority:        7,
+				RetryCount:      0,
+				CreatedAt:       time.Date(2026, 5, 28, 12, 0, 0, 0, time.UTC),
 			},
 		}
 		if err := WriteJobsTable(&buf, jobs); err != nil {
