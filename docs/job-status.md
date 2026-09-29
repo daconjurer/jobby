@@ -1,8 +1,12 @@
-# Job status state machine
+# Job status state machine (superseded)
 
-A job's `status` covers both the dispatch phase (MongoDB to Pulsar) and the execution phase.
-The allowed transitions are defined by `JobStatus.CanTransitionTo` in `internal/jobs/metadata/interface.go`.
-The conditional writes in `internal/jobs/mongodb/mongo_writer.go` enforce them per transition.
+> **Deprecated.** This document describes the original single-field `status` design.
+> The current implementation stores state in two independent fields, `dispatchStatus` and `executionStatus`, and computes the external status on read via `DisplayStatus()`.
+> See the [dispatch-execution-status-split overview](../planning/dispatch-execution-status-split/overview.md) and [design doc](../planning/dispatch-execution-status-split/dispatch-execution-status-split.md) for the active design.
+
+A job's `status` covered both the dispatch phase (MongoDB to Pulsar) and the execution phase.
+The allowed transitions were defined by `JobStatus.CanTransitionTo` in `internal/jobs/metadata/interface.go`.
+The conditional writes in `internal/jobs/mongodb/mongo_writer.go` enforced them per transition.
 
 See [job-saga.md](./architecture/job-saga.md) for the dispatch phase and [dispatch-worker.md](./architecture/dispatch-worker.md) for the worker wiring.
 
@@ -50,6 +54,6 @@ stateDiagram-v2
 
 ## Superseded by a status split
 
-The transitions `pending_dispatch` to `dispatched` and `dispatched` to `running` are written by two different services (dispatcher and executor), which creates a race described in [dispatch-executor-race.md](./architecture/dispatch-executor-race.md).
-The proposed fix, [dispatch-execution-status-split.md](../planning/dispatch-execution-status-split/dispatch-execution-status-split.md), replaces this single `status` field with two independently-owned fields.
-This document still describes the state machine as implemented today.
+The transitions `pending_dispatch` to `dispatched` and `dispatched` to `running` were written by two different services (dispatcher and executor), which created a race because both services updated the same field.
+The split design, [dispatch-execution-status-split.md](../planning/dispatch-execution-status-split/dispatch-execution-status-split.md), replaced the single `status` field with two independently-owned fields.
+This document is kept for historical context only.
