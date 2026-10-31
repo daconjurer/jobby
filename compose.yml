@@ -18,7 +18,7 @@ services:
       - jobby
 
   mongodb:
-    image: mongo:8.0
+    image: mongo:8.2.12
     entrypoint:
       - bash
       - -c
@@ -57,7 +57,7 @@ services:
       - jobby
 
   mongo-init:
-    image: mongo:8.0
+    image: mongo:8.2.12
     depends_on:
       mongodb:
         condition: service_healthy
