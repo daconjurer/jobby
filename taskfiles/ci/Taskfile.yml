@@ -53,8 +53,9 @@ tasks:
     dotenv:
       - .env
     cmds:
-      - ./scripts/ci-start-compose-services.sh "{{.SERVICES}}"
+      # Register cleanup first so Compose logs are captured even if startup fails.
       - defer: { task: ci-cleanup }
+      - ./scripts/ci-start-compose-services.sh "{{.SERVICES}}"
       - task: ci-migrate-if-needed
         vars: { SERVICES: "{{.SERVICES}}" }
       - env INTEGRATION_TESTS=true TEST_CATEGORY={{.CATEGORY}} task test-integration-category
@@ -72,8 +73,9 @@ tasks:
     dotenv:
       - .env
     cmds:
-      - ./scripts/ci-start-compose-services.sh "mongodb mongo-init migrate pulsar"
+      # Register cleanup first so Compose logs are captured even if startup fails.
       - defer: { task: ci-cleanup }
+      - ./scripts/ci-start-compose-services.sh "mongodb mongo-init migrate pulsar"
       - task: migrate-build
       - docker compose up --exit-code-from migrate --abort-on-container-exit migrate
       - docker compose up -d --build jobs-server jobs-dispatcher jobs-executor
